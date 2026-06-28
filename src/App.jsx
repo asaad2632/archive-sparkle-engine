@@ -296,17 +296,31 @@ export default function App() {
     setTimeout(() => footnotePageRef.current?.focus(), 100);
   };
 
+  // التحقق من رقم الصفحة قبل أي معالجة
+  const validatePageNumber = () => {
+    const p = (footnotePageNum || "").trim();
+    if (!p) {
+      showNotif("⚠️ رقم الصفحة مطلوب قبل توليد الهامش أو إضافة المرجع", "error");
+      setTimeout(() => footnotePageRef.current?.focus(), 50);
+      return false;
+    }
+    return true;
+  };
+
   const handleGenerateFootnote = () => {
     if (!footnoteModal) return;
-    const result = generateFootnote(footnoteModal, footnotePageNum);
+    if (!validatePageNumber()) return;
+    const result = generateFootnote(footnoteModal, footnotePageNum.trim());
     setFootnoteResult(result);
   };
 
+  // نسخ + تسجيل في المراجع النهائية بضغطة واحدة (يجبر إدخال رقم الصفحة أولاً)
   const copyFootnoteAndRegister = () => {
-    if (!footnoteResult) return;
-    navigator.clipboard.writeText(footnoteResult).then(() => {
-      // إرسال نسخة للقائمة النهائية تلقائياً
-      addToBibliography(footnoteModal, footnoteResult);
+    if (!footnoteModal) return;
+    if (!validatePageNumber()) return;
+    const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
+    navigator.clipboard.writeText(result).then(() => {
+      addToBibliography(footnoteModal, result);
       showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
       setFootnoteModal(null);
     });
@@ -317,9 +331,13 @@ export default function App() {
     try { const v = localStorage.getItem("acadarchiv_bibliography"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
   });
 
-  const saveBibliography = (updated) => {
-    setBibliography(updated);
-    try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(updated)); } catch {}
+  // يقبل مصفوفة أو دالة محدِّث (للتحديث الذري وتجنّب الحالة القديمة)
+  const saveBibliography = (updater) => {
+    setBibliography(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   // تحويل اسم المؤلف: "أسعد حامد كنعان" → "كنعان، أسعد حامد"
