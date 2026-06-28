@@ -344,14 +344,14 @@ export default function App() {
     });
   };
 
-  // تحويل اسم المؤلف: "أسعد حامد كنعان" → "كنعان، أسعد حامد"
+  // تحويل اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
   const formatAuthorLastFirst = (fullName) => {
     if (!fullName || fullName.trim() === "") return "[مؤلف غير معروف]";
     const parts = fullName.trim().split(/\s+/);
     if (parts.length === 1) return fullName;
     const last  = parts[parts.length - 1];
     const rest  = parts.slice(0, parts.length - 1).join(" ");
-    return `${last}، ${rest}`;
+    return `${last}, ${rest}`;
   };
 
   // تحديد قسم المصدر في القائمة النهائية
