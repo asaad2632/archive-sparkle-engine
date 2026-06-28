@@ -25,28 +25,28 @@ export const Route = createFileRoute("/api/ai-chat")({
             max_tokens?: number;
             model?: string;
           };
-          const model = body.model || "google/gemini-3-flash-preview";
-          const isDeepSeek = model.startsWith("deepseek/");
+          const model = body.model || "groq/llama-3.3-70b-versatile";
+          const isGroq = model.startsWith("groq/");
 
           let endpoint: string;
           let headers: Record<string, string>;
           let sendModel: string;
 
-          if (isDeepSeek) {
-            const dsKey = (process.env.DEEPSEEK_API_KEY || "").trim().replace(/^["']|["']$/g, "");
-            if (!dsKey) {
-              return new Response(JSON.stringify({ error: "Missing DEEPSEEK_API_KEY" }), {
+          if (isGroq) {
+            const gKey = (process.env.GROQ_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+            if (!gKey) {
+              return new Response(JSON.stringify({ error: "Missing GROQ_API_KEY" }), {
                 status: 500,
                 headers: { "Content-Type": "application/json" },
               });
             }
-            endpoint = "https://api.deepseek.com/v1/chat/completions";
+            endpoint = "https://api.groq.com/openai/v1/chat/completions";
             headers = {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${dsKey}`,
+              Authorization: `Bearer ${gKey}`,
               Accept: "application/json",
             };
-            sendModel = model.replace(/^deepseek\//, "");
+            sendModel = model.replace(/^groq\//, "");
           } else {
             const key = process.env.LOVABLE_API_KEY;
             if (!key) {
