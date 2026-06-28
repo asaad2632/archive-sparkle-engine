@@ -327,6 +327,7 @@ export default function App() {
       showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
     }
     setFootnoteModal(null);
+    setPage("bibliography");
   };
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
@@ -411,7 +412,7 @@ export default function App() {
       year,
       category:  cat,
       bibEntry,
-      sortKey:   authorFormatted || title,
+      sortKey:   author ? authorFormatted : title,
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
