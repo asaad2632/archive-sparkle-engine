@@ -33,14 +33,47 @@ export const Route = createFileRoute("/api/ai-chat")({
             });
           }
           const model = body.model || "google/gemini-3-flash-preview";
-          const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: {
+          const isDeepSeek = model.startsWith("deepseek/");
+
+          let endpoint: string;
+          let headers: Record<string, string>;
+          let sendModel: string;
+
+          if (isDeepSeek) {
+            const dsKey = process.env.DEEPSEEK_API_KEY;
+            if (!dsKey) {
+              return new Response(JSON.stringify({ error: "Missing DEEPSEEK_API_KEY" }), {
+                status: 500,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+            endpoint = "https://api.deepseek.com/v1/chat/completions";
+            headers = {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${dsKey}`,
+            };
+            sendModel = model.replace(/^deepseek\//, "");
+          } else {
+            const key = process.env.LOVABLE_API_KEY;
+            if (!key) {
+              return new Response(JSON.stringify({ error: "Missing LOVABLE_API_KEY" }), {
+                status: 500,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+            endpoint = "https://ai.gateway.lovable.dev/v1/chat/completions";
+            headers = {
               "Content-Type": "application/json",
               "Lovable-API-Key": key,
-            },
+            };
+            sendModel = model;
+          }
+
+          const resp = await fetch(endpoint, {
+            method: "POST",
+            headers,
             body: JSON.stringify({
-              model,
+              model: sendModel,
               messages: toOpenAIMessages(body.messages || [], body.system),
               max_tokens: body.max_tokens ?? 1024,
             }),
