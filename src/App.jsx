@@ -896,7 +896,10 @@ JSON المطلوب (أعده فقط بدون backticks):
       id: docs.length + 100 + Math.floor(Math.random()*100),
       chapterId: addForm.chapterId ? parseInt(addForm.chapterId) : null,
       year: addForm.year || null,
+      sourceType: addForm.sourceType || addForm.category || "وثيقة أرشيفية",
+      category:   addForm.category   || addForm.sourceType || "وثيقة أرشيفية",
     };
+
     setDocs(prev => [newDoc, ...prev]);
     setAddForm({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
     showNotif(`✅ تمت إضافة الوثيقة — الإجمالي: ${docs.length + 1}`);
