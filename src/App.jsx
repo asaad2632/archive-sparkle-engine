@@ -2019,6 +2019,12 @@ ${docsContext}
                                     style={{padding:"3px 8px",borderRadius:5,background:"#faf5ff",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
                                     📝
                                   </button>
+                                  <button
+                                    onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}}
+                                    title="حذف"
+                                    style={{padding:"3px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
+                                    🗑️
+                                  </button>
                                 </div>
                               ))}
                             </div>
