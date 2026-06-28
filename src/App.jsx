@@ -143,17 +143,145 @@ const DOCS_FROM_INDEX = [
 ];
 
 const COUNTRIES = ["السعودية","الكويت","البحرين","قطر","الإمارات/الساحل المتصالح","عُمان","بريطانيا","الولايات المتحدة","ألمانيا"];
-const CATEGORIES = ["مصدر أولي","كتاب","رسالة علمية","بحث","صحيفة","مقالة","تقرير"];
+
+// ============= UNIVERSAL SOURCE-TYPE SCHEMA =============
+// كل تبويب في التطبيق يقرأ من هنا. تعديل واحد ينعكس على كل التبويبات.
+const SOURCE_TYPES = [
+  "كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه",
+  "بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة",
+  "موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي",
+  // legacy aliases (kept so old saved data keeps working)
+  "كتاب","رسالة علمية","بحث","مقالة","تقرير"
+];
+const CATEGORIES = SOURCE_TYPES;
+
+// أقسام قائمة المراجع النهائية (الترتيب مُلزِم)
+const BIB_SECTIONS_ORDER = [
+  "الوثائق الأرشيفية والمصادر الأولية",
+  "الكتب العربية والأجنبية",
+  "الرسائل والأطاريح",
+  "البحوث والمجلات العلمية",
+  "المؤتمرات العلمية",
+  "الصحف",
+  "المواقع الإلكترونية والموسوعات",
+];
+
+function getBibSectionForType(cat) {
+  const c = (cat || "").trim();
+  if (["مصدر أولي","وثيقة أرشيفية","وثائق أرشيفية","تقرير رسمي","تقرير","archival","archive"].includes(c)) return "الوثائق الأرشيفية والمصادر الأولية";
+  if (["كتاب","كتاب عربي","كتاب أجنبي","book","books"].includes(c)) return "الكتب العربية والأجنبية";
+  if (["رسالة ماجستير","أطروحة دكتوراه","رسالة علمية","thesis","dissertation"].includes(c)) return "الرسائل والأطاريح";
+  if (["بحث","بحث علمي","مجلة علمية","مقالة","article","journal"].includes(c)) return "البحوث والمجلات العلمية";
+  if (["مؤتمر علمي","مؤتمر","conference","proceedings"].includes(c)) return "المؤتمرات العلمية";
+  if (["صحيفة","صحف","جريدة","newspaper","newspapers"].includes(c)) return "الصحف";
+  if (["موقع إلكتروني","رابط","website","موسوعة","encyclopedia","url"].includes(c)) return "المواقع الإلكترونية والموسوعات";
+  return "الوثائق الأرشيفية والمصادر الأولية";
+}
+
+// نسّق اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
+function formatAuthorLastFirstUtil(fullName) {
+  if (!fullName || !fullName.trim()) return "[مؤلف غير معروف]";
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return fullName.trim();
+  const last = parts[parts.length - 1];
+  const rest = parts.slice(0, -1).join(" ");
+  return `${last}, ${rest}`;
+}
+
+// مولّد الاستشهاد الأكاديمي العربي حسب نوع المصدر.
+// withPage=true → هامش (فيه ص##)؛ withPage=false → دخل ببليوغرافيا (بدون رقم صفحة، مؤلف Last,First).
+function buildArabicCitation(doc, pageNum = "", withPage = true) {
+  const cat = doc.category || doc.sourceType || doc.type || "وثيقة أرشيفية";
+  const rawAuthor = doc.author || "";
+  const author = withPage
+    ? (rawAuthor || "[اسم المؤلف]")
+    : formatAuthorLastFirstUtil(rawAuthor);
+  const title = doc.title || "[العنوان]";
+  const year  = doc.year  || doc.date || "د.ت";
+  const page  = pageNum    || "[رقم الصفحة]";
+  const pageSuffix = withPage ? `، ص${page}` : "";
+
+  // كتاب (عربي / أجنبي / مطلق)
+  if (cat === "كتاب" || cat === "كتاب عربي" || cat === "كتاب أجنبي") {
+    const edition   = doc.edition   || "1";
+    const place     = doc.place     || "[مكان النشر]";
+    const publisher = doc.publisher || "[دار النشر]";
+    return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})${pageSuffix}.`;
+  }
+  // رسالة / أطروحة
+  if (cat === "رسالة ماجستير" || cat === "أطروحة دكتوراه" || cat === "رسالة علمية") {
+    const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
+    const college = doc.college    || "[الكلية]";
+    const univ    = doc.university || "[الجامعة]";
+    return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}${pageSuffix}.`;
+  }
+  // بحث / مجلة
+  if (cat === "بحث" || cat === "بحث علمي" || cat === "مجلة علمية" || cat === "مقالة") {
+    const journal = doc.journal || doc.journalName || "[اسم المجلة]";
+    const vol     = doc.volume  || "[م]";
+    const iss     = doc.issue   || "[ع]";
+    return `${author}، "${title}"، ${journal}، م${vol}، ع${iss}، (${year})${pageSuffix}.`;
+  }
+  // مؤتمر علمي
+  if (cat === "مؤتمر علمي" || cat === "مؤتمر") {
+    const conf  = doc.conference || doc.conferenceName || "[اسم المؤتمر]";
+    const place = doc.place || "[المكان]";
+    return `${author}، "${title}"، وقائع ${conf}، ${place}، ${year}${pageSuffix}.`;
+  }
+  // صحيفة
+  if (cat === "صحيفة") {
+    const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
+    const issue     = doc.issue     || "[رقم العدد]";
+    const date      = doc.date      || year;
+    return `صحيفة ${newspaper}، العدد (${issue})، ${date}${pageSuffix}.`;
+  }
+  // موقع إلكتروني
+  if (cat === "موقع إلكتروني" || cat === "رابط") {
+    const url        = doc.url || doc.link || "[الرابط]";
+    const visitDate  = doc.visitDate || doc.accessDate || "[تاريخ الزيارة]";
+    return `${author}، ${title}، متاح على: ${url}، تاريخ الزيارة: ${visitDate}${pageSuffix}.`;
+  }
+  // موسوعة
+  if (cat === "موسوعة") {
+    const vol     = doc.volume    || "[م]";
+    const edition = doc.edition   || "[الطبعة]";
+    const pub     = doc.publisher || "[الناشر]";
+    return `${title}، م${vol}، ط${edition}، (${pub}، ${year})${pageSuffix}.`;
+  }
+  // وثيقة أرشيفية / مصدر أولي / تقرير رسمي
+  if (cat === "وثيقة أرشيفية" || cat === "مصدر أولي" || cat === "تقرير رسمي" || cat === "تقرير") {
+    const ref = doc.archiveRef || doc.archiveNumber || "[الرقم الأرشيفي]";
+    return `${title}، ${ref}، ${year}${pageSuffix}.`;
+  }
+  return `${author}، ${title}، (${year})${pageSuffix}.`;
+}
+
+// كشف نوع المصدر من رابط URL (للاستيراد التلقائي).
+function detectSourceTypeFromUrl(url = "") {
+  const u = url.toLowerCase();
+  if (/qdl\.qa|nationalarchives|ior\//.test(u)) return "وثيقة أرشيفية";
+  if (/jstor|sciencedirect|springer|tandfonline|doi\.org|researchgate/.test(u)) return "بحث علمي";
+  if (/wikipedia|britannica|encyclopedia|maarefa|marefa/.test(u)) return "موسوعة";
+  if (/aljazeera|bbc|reuters|nytimes|theguardian|alarabiya|alhayat|asharqalawsat|newspaper|news\./.test(u)) return "صحيفة";
+  if (/google\.com\/books|books\.google|archive\.org\/details/.test(u)) return "كتاب";
+  if (/thesis|dissertation|shamaa|dar\.bibalex/.test(u)) return "رسالة ماجستير";
+  return "موقع إلكتروني";
+}
 
 function genRef(doc, fmt) {
-  const a = doc.author || "مصدر أولي";
-  const y = doc.year || "د.ت";
-  const t = doc.title;
-  const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
-  if (fmt==="APA") return `${a} (${y}). ${t}.${r}`;
-  if (fmt==="Chicago") return `${a}. "${t}."${r} ${y}.`;
-  return `${a}. "${t}."${r} ${y}.`;
+  // الصيغ الأكاديمية الأجنبية (للاستخدام الإنجليزي)
+  if (fmt === "APA" || fmt === "Chicago" || fmt === "MLA") {
+    const a = doc.author || "مصدر أولي";
+    const y = doc.year   || "د.ت";
+    const t = doc.title;
+    const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
+    if (fmt === "APA") return `${a} (${y}). ${t}.${r}`;
+    return `${a}. "${t}."${r} ${y}.`;
+  }
+  // افتراضياً: الاستشهاد العربي حسب نوع المصدر (بدون رقم صفحة)
+  return buildArabicCitation(doc, "", false);
 }
+
 
 export default function App() {
   const [page, setPage] = useState("home");
