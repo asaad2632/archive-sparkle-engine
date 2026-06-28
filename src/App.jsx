@@ -3617,7 +3617,7 @@ ${docsContext}
                                 📋
                               </button>
                               <button
-                                onClick={()=>removeFromBibliography(b.id)}
+                                onClick={()=>setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المرجع من القائمة النهائية؟",onConfirm:()=>removeFromBibliography(b.id)})}
                                 title="حذف"
                                 style={{padding:"4px 8px",borderRadius:5,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>
                                 🗑️
