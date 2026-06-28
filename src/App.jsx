@@ -1796,6 +1796,55 @@ ${docsContext}
               );
             })()}
 
+            {/* ===== تصنيف المصادر الأكاديمية مع نسب الإنجاز لكل فئة ===== */}
+            {(() => {
+              const CATEGORIES = [
+                { key: "كتاب",            label: "📚 الكتب",                color: "#3B82F6", target: 40 },
+                { key: "رسالة علمية",     label: "🎓 الرسائل الجامعية",      color: "#8B5CF6", target: 15 },
+                { key: "أطروحة دكتوراه",  label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
+                { key: "بحث",             label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
+                { key: "مقالة",           label: "📰 المقالات والدوريات",    color: "#F59E0B", target: 20 },
+                { key: "صحيفة",           label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
+                { key: "وثيقة أرشيفية",   label: "🗂️ الوثائق الأرشيفية",     color: "#10B981", target: 25 },
+                { key: "تقرير",           label: "📑 التقارير",              color: "#64748b", target: 10 },
+              ];
+              const allSources = [...docs, ...library];
+              const totalSources = allSources.length || 1;
+              return (
+                <div style={{background:"white",borderRadius:14,padding:"18px 20px",border:"0.5px solid #e2e8f0",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#1e3a5f"}}>🏷️ تصنيف المصادر الأكاديمية حسب النوع</div>
+                    <span style={{fontSize:11,color:"#64748b"}}>المجموع: {allSources.length} مصدر</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                    {CATEGORIES.map(c => {
+                      const count = allSources.filter(s => (s.sourceType || s.category) === c.key).length;
+                      const pct = Math.min(100, Math.round((count / c.target) * 100));
+                      const bibs = bibliography.filter(b => b.category === c.key).length;
+                      return (
+                        <div key={c.key} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${c.color}22`}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                            <span style={{fontSize:11,fontWeight:600,color:c.color}}>{c.label}</span>
+                            <span style={{fontSize:12,fontWeight:700,color:pct >= 100 ? "#10B981" : c.color}}>{pct}%</span>
+                          </div>
+                          <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:5}}>
+                            <div style={{height:"100%",width:`${pct}%`,background:c.color,borderRadius:3,transition:"width 0.6s ease"}}/>
+                          </div>
+                          <div style={{display:"flex",gap:10,fontSize:10,color:"#94a3b8"}}>
+                            <span>📄 {count} / {c.target}</span>
+                            <span>📝 {bibs} هامش</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:10,fontSize:10,color:"#94a3b8",textAlign:"center"}}>
+                    * النسبة محسوبة على هدف تقديري لكل فئة — يكتشف الذكاء الاصطناعي النوع تلقائياً عند رفع كل ملف
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ===== بطاقات الإحصاء السريع ===== */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
               {[
