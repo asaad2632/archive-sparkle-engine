@@ -785,39 +785,58 @@ export default function App() {
           tools:[{ type:"web_search_20250305", name:"web_search" }],
           messages:[{
             role:"user",
-            content:`اذهب إلى هذا الرابط وأخرج لي بيانات الوثيقة الأرشيفية المذكورة فيه بصيغة JSON فقط بدون أي شرح:
+            content:`اذهب إلى هذا الرابط واستخرج بيانات المصدر مهما كان نوعه (كتاب/رسالة/بحث/مجلة/مؤتمر/صحيفة/موقع/موسوعة/وثيقة أرشيفية/تقرير) بصيغة JSON فقط بدون أي شرح:
 رابط: ${urlImport}
 
 JSON المطلوب (أعده فقط بدون backticks):
 {
-  "title": "عنوان الوثيقة بالعربية",
+  "title": "العنوان بالعربية",
   "author": "المؤلف أو الجهة",
   "year": "السنة (رقم فقط أو null)",
-  "archiveRef": "رقم الأرشيف مثل IOR/R/15/...",
-  "category": "نوع الوثيقة",
-  "notes": "ملاحظة مختصرة عن محتواها",
-  "keywords": "كلمات مفتاحية مفيدة"
+  "archiveRef": "رقم الأرشيف إن وُجد",
+  "sourceType": "أحد القيم: كتاب عربي|كتاب أجنبي|رسالة ماجستير|أطروحة دكتوراه|بحث علمي|مجلة علمية|مؤتمر علمي|صحيفة|موقع إلكتروني|موسوعة|وثيقة أرشيفية|تقرير رسمي|مصدر أولي",
+  "publisher": "الناشر إن وُجد",
+  "place": "مكان النشر إن وُجد",
+  "edition": "الطبعة إن وُجدت",
+  "journal": "اسم المجلة إن كان بحث/مقالة",
+  "volume": "المجلد إن وُجد",
+  "issue": "العدد إن وُجد",
+  "university": "الجامعة إن كان رسالة",
+  "college": "الكلية إن كان رسالة",
+  "conference": "اسم المؤتمر إن وُجد",
+  "newspaper": "اسم الصحيفة إن كانت صحيفة",
+  "url": "${urlImport}",
+  "visitDate": "${new Date().toLocaleDateString("ar-IQ")}",
+  "notes": "ملاحظة مختصرة",
+  "keywords": "كلمات مفتاحية"
 }
-إذا كان الرابط لصفحة QDL أو أرشيف بريطاني، استخرج المعلومات منه.`
+اكتشف النوع تلقائياً من خصائص الصفحة (مجال، عناصر بيانات وصفية، إلخ).`
           }]
         });
       const text = data.content?.map(c=>c.text||"").join("") || "";
       try {
         const clean = text.replace(/```json|```/g,"").trim();
         const parsed = JSON.parse(clean);
+        // كشف نوع المصدر إذا لم يحدّده الذكاء الاصطناعي
+        const detectedType = parsed.sourceType || detectSourceTypeFromUrl(urlImport);
+        parsed.sourceType = detectedType;
+        parsed.category   = detectedType;
         setUrlResult(parsed);
         setAddForm(prev => ({
           ...prev,
+          ...parsed,
           title: parsed.title || "",
           author: parsed.author || "",
           year: parsed.year || "",
           archiveRef: parsed.archiveRef || "",
-          category: parsed.category || "مصدر أولي",
+          category: detectedType,
+          sourceType: detectedType,
           notes: parsed.notes || "",
           keywords: parsed.keywords || "",
         }));
         setPage("add");
-        showNotif("✅ تم استخراج بيانات الوثيقة — راجع النموذج وأكمل البيانات");
+        showNotif(`✅ تم استخراج بيانات المصدر (${detectedType}) — راجع النموذج وأكمل البيانات`);
+
       } catch {
         showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
       }
