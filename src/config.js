@@ -7,6 +7,8 @@ export const AI_MODELS = [
   { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (Lovable AI)" },
   { id: "openai/gpt-5-mini", label: "GPT-5 Mini (Lovable AI)" },
   { id: "openai/gpt-5", label: "GPT-5 (Lovable AI)" },
+  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat (مفتاحك الخاص)" },
+  { id: "deepseek/deepseek-reasoner", label: "DeepSeek Reasoner (مفتاحك الخاص)" },
 ];
 
 export const MODEL_STORAGE_KEY = "acadarchiv_ai_model";
