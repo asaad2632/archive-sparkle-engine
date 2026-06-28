@@ -315,15 +315,18 @@ export default function App() {
   };
 
   // نسخ + تسجيل في المراجع النهائية بضغطة واحدة (يجبر إدخال رقم الصفحة أولاً)
-  const copyFootnoteAndRegister = () => {
+  const copyFootnoteAndRegister = async () => {
     if (!footnoteModal) return;
     if (!validatePageNumber()) return;
     const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
-    navigator.clipboard.writeText(result).then(() => {
-      addToBibliography(footnoteModal, result);
+    addToBibliography(footnoteModal, result);
+    try {
+      await navigator.clipboard.writeText(result);
       showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
-      setFootnoteModal(null);
-    });
+    } catch {
+      showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
+    }
+    setFootnoteModal(null);
   };
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
@@ -352,14 +355,13 @@ export default function App() {
 
   // تحديد قسم المصدر في القائمة النهائية
   const getBibSection = (cat) => {
-    if (!cat) return "أخرى";
-    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") return "الوثائق الأرشيفية";
-    if (cat === "كتاب")          return "الكتب";
-    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") return "الرسائل والأطاريح";
-    if (cat === "صحيفة")         return "الصحف";
-    if (cat === "مقالة")         return "المقالات";
-    if (cat === "تقرير" || cat === "بحث") return "التقارير والبحوث";
-    return "أخرى";
+    const normalized = (cat || "").trim();
+    if (["مصدر أولي", "وثيقة أرشيفية", "وثائق أرشيفية", "archival", "archive"].includes(normalized)) return "Archival Documents";
+    if (["كتاب", "كتب", "book", "books"].includes(normalized)) return "Books";
+    if (["رسالة علمية", "أطروحة دكتوراه", "رسالة ماجستير", "thesis", "dissertation"].includes(normalized)) return "Theses and Dissertations";
+    if (["صحيفة", "صحف", "جريدة", "newspaper", "newspapers"].includes(normalized)) return "Newspapers";
+    if (["موقع إلكتروني", "رابط", "url", "website", "websites"].includes(normalized)) return "Websites";
+    return "Articles and Research";
   };
 
   const addToBibliography = (doc, footnoteText) => {
@@ -423,20 +425,19 @@ export default function App() {
 
   // ترتيب المراجع: أقسام ثم أبجدي
   const BIBO_SECTIONS_ORDER = [
-    "الوثائق الأرشيفية",
-    "الكتب",
-    "الرسائل والأطاريح",
-    "الصحف",
-    "المقالات",
-    "التقارير والبحوث",
-    "أخرى",
+    "Archival Documents",
+    "Books",
+    "Theses and Dissertations",
+    "Articles and Research",
+    "Newspapers",
+    "Websites",
   ];
 
   const getBibGrouped = () => {
     const grouped = {};
     BIBO_SECTIONS_ORDER.forEach(s => { grouped[s] = []; });
     bibliography.forEach(b => {
-      const sec = grouped[b.section] ? b.section : "أخرى";
+      const sec = grouped[b.section] ? b.section : getBibSection(b.category);
       grouped[sec].push(b);
     });
     BIBO_SECTIONS_ORDER.forEach(s => {
