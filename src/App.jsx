@@ -1422,12 +1422,15 @@ ${textToTranslate.substring(0, 4000)}
 
   // تصنيف فئات المصادر للتنوع العلمي
   const DIVERSITY_CATEGORIES = [
-    { key: "archival",  label: "الوثائق الأرشيفية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية"] },
-    { key: "books",     label: "الكتب",              color: "#3B82F6", cats: ["كتاب"] },
-    { key: "theses",    label: "الرسائل والأطاريح",  color: "#10B981", cats: ["رسالة علمية","أطروحة دكتوراه"] },
-    { key: "journals",  label: "المجلات والصحف",     color: "#F59E0B", cats: ["مقالة","صحيفة","بحث"] },
-    { key: "reports",   label: "التقارير والمواقع",   color: "#EF4444", cats: ["تقرير","موقع إلكتروني"] },
+    { key: "archival",  label: "الوثائق والمصادر الأولية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية","تقرير رسمي","تقرير"] },
+    { key: "books",     label: "الكتب",                     color: "#3B82F6", cats: ["كتاب","كتاب عربي","كتاب أجنبي"] },
+    { key: "theses",    label: "الرسائل والأطاريح",         color: "#10B981", cats: ["رسالة علمية","رسالة ماجستير","أطروحة دكتوراه"] },
+    { key: "journals",  label: "البحوث والمجلات",            color: "#F59E0B", cats: ["مقالة","بحث","بحث علمي","مجلة علمية"] },
+    { key: "confs",     label: "المؤتمرات",                  color: "#06B6D4", cats: ["مؤتمر علمي","مؤتمر"] },
+    { key: "news",      label: "الصحف",                      color: "#EF4444", cats: ["صحيفة"] },
+    { key: "web",       label: "المواقع والموسوعات",         color: "#0EA5E9", cats: ["موقع إلكتروني","موسوعة"] },
   ];
+
 
   const calcDiversityForChapter = (chapterId) => {
     const chDocs = combinedDocs.filter(d => d.chapterId === chapterId);
