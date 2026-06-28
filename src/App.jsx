@@ -379,42 +379,7 @@ export default function App() {
   const footnotePageRef = useRef(null);
 
   const generateFootnote = (doc, pageNum) => {
-    const cat = doc.category || doc.sourceType || "وثيقة أرشيفية";
-    const author  = doc.author  || "[اسم المؤلف]";
-    const title   = doc.title   || "[العنوان]";
-    const year    = doc.year    || "[السنة]";
-    const page    = pageNum     || "[رقم الصفحة]";
-
-    if (cat === "كتاب") {
-      const edition   = doc.edition   || "1";
-      const place     = doc.place     || "[مكان النشر]";
-      const publisher = doc.publisher || "[دار النشر]";
-      return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})، ص${page}.`;
-    }
-    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
-      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
-      const college = doc.college    || "[الكلية]";
-      const univ    = doc.university || "[الجامعة]";
-      return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}، ص${page}.`;
-    }
-    if (cat === "صحيفة") {
-      const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
-      const issue     = doc.issue     || "[رقم العدد]";
-      const date      = doc.date      || year;
-      return `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}، ص${page}.`;
-    }
-    if (cat === "مقالة") {
-      const journal = doc.journal || "[اسم المجلة]";
-      const vol     = doc.volume  || "[م]";
-      const iss     = doc.issue   || "[ع]";
-      return `${author}، "${title}"، ${journal}، م${vol}، ع${iss} (${year})، ص${page}.`;
-    }
-    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
-      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
-      return `${title}، ${ref}، ${year}، ص${page}.`;
-    }
-    // افتراضي
-    return `${author}، ${title}، (${year})، ص${page}.`;
+    return buildArabicCitation(doc, pageNum, true);
   };
 
   const openFootnoteModal = (doc) => {
@@ -463,7 +428,7 @@ export default function App() {
     try { const v = localStorage.getItem("acadarchiv_bibliography"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
   });
 
-  // يقبل مصفوفة أو دالة محدِّث (للتحديث الذري وتجنّب الحالة القديمة)
+  // يقبل مصفوفة أو دالة محدِّث
   const saveBibliography = (updater) => {
     setBibliography(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -472,64 +437,20 @@ export default function App() {
     });
   };
 
-  // تحويل اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
-  const formatAuthorLastFirst = (fullName) => {
-    if (!fullName || fullName.trim() === "") return "[مؤلف غير معروف]";
-    const parts = fullName.trim().split(/\s+/);
-    if (parts.length === 1) return fullName;
-    const last  = parts[parts.length - 1];
-    const rest  = parts.slice(0, parts.length - 1).join(" ");
-    return `${last}, ${rest}`;
-  };
-
-  // تحديد قسم المصدر في القائمة النهائية
-  const getBibSection = (cat) => {
-    const normalized = (cat || "").trim();
-    if (["مصدر أولي", "وثيقة أرشيفية", "وثائق أرشيفية", "archival", "archive"].includes(normalized)) return "Archival Documents";
-    if (["كتاب", "كتب", "book", "books"].includes(normalized)) return "Books";
-    if (["رسالة علمية", "أطروحة دكتوراه", "رسالة ماجستير", "thesis", "dissertation"].includes(normalized)) return "Theses and Dissertations";
-    if (["صحيفة", "صحف", "جريدة", "newspaper", "newspapers"].includes(normalized)) return "Newspapers";
-    if (["موقع إلكتروني", "رابط", "url", "website", "websites"].includes(normalized)) return "Websites";
-    return "Articles and Research";
-  };
+  // aliases للحفاظ على التوافق الخلفي
+  const formatAuthorLastFirst = formatAuthorLastFirstUtil;
+  const getBibSection = getBibSectionForType;
 
   const addToBibliography = (doc, footnoteText) => {
     if (!doc) return;
     const cat     = doc.category || doc.sourceType || "وثيقة أرشيفية";
-    const section = getBibSection(cat);
+    const section = getBibSectionForType(cat);
     const author  = doc.author || "";
-    const authorFormatted = formatAuthorLastFirst(author);
+    const authorFormatted = formatAuthorLastFirstUtil(author);
     const year    = doc.year   || "د.ت";
     const title   = doc.title  || "";
-
-    // بناء نص المرجع بدون رقم الصفحة
-    let bibEntry = "";
-    if (cat === "كتاب") {
-      const edition   = doc.edition   || "1";
-      const place     = doc.place     || "[مكان النشر]";
-      const publisher = doc.publisher || "[دار النشر]";
-      bibEntry = `${authorFormatted}، ${title}، ط${edition}، (${place}: ${publisher}، ${year}).`;
-    } else if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
-      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
-      const college = doc.college    || "[الكلية]";
-      const univ    = doc.university || "[الجامعة]";
-      bibEntry = `${authorFormatted}، "${title}"، (${degree})، ${college}، ${univ}، ${year}.`;
-    } else if (cat === "صحيفة") {
-      const newspaper = doc.newspaper || title || "[اسم الصحيفة]";
-      const issue     = doc.issue     || "[رقم العدد]";
-      const date      = doc.date      || year;
-      bibEntry = `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}.`;
-    } else if (cat === "مقالة") {
-      const journal = doc.journal || "[اسم المجلة]";
-      const vol     = doc.volume  || "[م]";
-      const iss     = doc.issue   || "[ع]";
-      bibEntry = `${authorFormatted}، "${title}"، ${journal}، م${vol}، ع${iss} (${year}).`;
-    } else if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
-      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
-      bibEntry = `${title}، ${ref}، ${year}.`;
-    } else {
-      bibEntry = `${authorFormatted}، ${title}، (${year}).`;
-    }
+    // بناء نص المرجع بدون رقم الصفحة باستخدام البنّاء الموحَّد
+    const bibEntry = buildArabicCitation(doc, "", false);
 
     const newEntry = {
       id:        Date.now() + Math.random(),
@@ -544,7 +465,6 @@ export default function App() {
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
-    // منع التكرار + تحديث ذري + فرز تفاعلي تلقائي
     saveBibliography(prev => {
       const dup = prev.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
       if (dup) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return prev; }
@@ -552,15 +472,9 @@ export default function App() {
     });
   };
 
-  // ترتيب المراجع: أقسام ثم أبجدي
-  const BIBO_SECTIONS_ORDER = [
-    "Archival Documents",
-    "Books",
-    "Theses and Dissertations",
-    "Articles and Research",
-    "Newspapers",
-    "Websites",
-  ];
+  // ترتيب المراجع: أقسام عربية ثم أبجدي
+  const BIBO_SECTIONS_ORDER = BIB_SECTIONS_ORDER;
+
 
   const getBibGrouped = () => {
     const grouped = {};
