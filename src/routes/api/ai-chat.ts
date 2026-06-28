@@ -33,7 +33,7 @@ export const Route = createFileRoute("/api/ai-chat")({
           let sendModel: string;
 
           if (isDeepSeek) {
-            const dsKey = process.env.DEEPSEEK_API_KEY;
+            const dsKey = (process.env.DEEPSEEK_API_KEY || "").trim().replace(/^["']|["']$/g, "");
             if (!dsKey) {
               return new Response(JSON.stringify({ error: "Missing DEEPSEEK_API_KEY" }), {
                 status: 500,
@@ -44,6 +44,7 @@ export const Route = createFileRoute("/api/ai-chat")({
             headers = {
               "Content-Type": "application/json",
               Authorization: `Bearer ${dsKey}`,
+              Accept: "application/json",
             };
             sendModel = model.replace(/^deepseek\//, "");
           } else {
