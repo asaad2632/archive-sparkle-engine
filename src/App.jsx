@@ -2478,7 +2478,7 @@ ${docsContext}
                 <button onClick={()=>{setUrlImport(""); setPage("url_import");}} style={{padding:"9px 16px",borderRadius:8,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>🔗 استيراد من رابط</button>
               </div>
             </div>
-          </div>
+
 
           {/* ===== Added Sources List with Delete ===== */}
           {(() => {
