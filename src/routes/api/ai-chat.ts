@@ -78,7 +78,7 @@ export const Route = createFileRoute("/api/ai-chat")({
             headers,
             body: JSON.stringify({
               model: sendModel,
-              messages: toOpenAIMessages(body.messages || [], body.system),
+              messages: toOpenAIMessages(body.messages || [], body.system, !isGroq),
               max_tokens: body.max_tokens ?? 1024,
             }),
           });
