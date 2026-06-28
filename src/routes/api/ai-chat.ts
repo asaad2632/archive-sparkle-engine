@@ -26,9 +26,17 @@ export const Route = createFileRoute("/api/ai-chat")({
             messages?: ChatMsg[];
             max_tokens?: number;
             model?: string;
+            forceProvider?: "lovable" | "groq";
           };
-          const model = body.model || "groq/llama-3.3-70b-versatile";
-          const isGroq = model.startsWith("groq/");
+          const requestedModel = body.model || "groq/llama-3.3-70b-versatile";
+          const isGroq = body.forceProvider === "lovable"
+            ? false
+            : body.forceProvider === "groq"
+              ? true
+              : requestedModel.startsWith("groq/");
+          const model = body.forceProvider === "lovable" && requestedModel.startsWith("groq/")
+            ? "google/gemini-2.5-flash"
+            : requestedModel;
 
           let endpoint: string;
           let headers: Record<string, string>;
