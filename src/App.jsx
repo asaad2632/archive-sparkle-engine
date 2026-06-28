@@ -2538,18 +2538,22 @@ ${docsContext}
                   </div>
                 )}
 
-                <div style={{display:"flex",gap:8,marginBottom:10}}>
-                  <button onClick={()=>setExportSelected(combinedDocs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل ({combinedDocs.length})</button>
+                <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <button onClick={()=>setExportSelected(combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل</button>
                   <button onClick={()=>setExportSelected(combinedDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
                   <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
+                  <select value={exportTypeFilter} onChange={e=>setExportTypeFilter(e.target.value)} style={{marginInlineStart:"auto",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
+                    <option value="">🏷️ كل الأنواع</option>
+                    {["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
                 <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
-                  {combinedDocs.map(d=>(
+                  {combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>(
                     <label key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",cursor:"pointer",fontSize:11}}>
                       <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
                       <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
-                      <span style={{fontSize:9,color:"#94a3b8",flexShrink:0}}>{d.category||"وثيقة"}</span>
+                      <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
                     </label>
                   ))}
                 </div>
