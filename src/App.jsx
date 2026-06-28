@@ -1739,6 +1739,20 @@ ${docsContext}
     <div style={{fontFamily:"'Segoe UI',Tahoma,Geneva,Verdana,sans-serif",direction:"rtl",minHeight:"100vh",background:"#f1f5f9",color:"#1e293b"}}>
       {notif && <div style={{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:notif.type==="error"?"#fee2e2":notif.type==="warn"?"#fef9c3":"#dcfce7",color:notif.type==="error"?"#dc2626":notif.type==="warn"?"#92400e":"#16a34a",padding:"10px 24px",borderRadius:12,fontWeight:500,fontSize:13,border:`1px solid ${notif.type==="error"?"#fca5a5":notif.type==="warn"?"#fde68a":"#86efac"}`,boxShadow:"0 4px 20px rgba(0,0,0,0.12)"}}>{notif.msg}</div>}
 
+      {confirmDialog && (
+        <div onClick={()=>setConfirmDialog(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:14,padding:24,maxWidth:420,width:"100%",direction:"rtl",fontFamily:"inherit",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+            <div style={{fontWeight:700,fontSize:17,color:"#1e293b",marginBottom:10}}>{confirmDialog.title}</div>
+            <div style={{fontSize:13,color:"#475569",lineHeight:1.8,marginBottom:20,whiteSpace:"pre-line"}}>{confirmDialog.message}</div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button onClick={()=>setConfirmDialog(null)} style={{padding:"9px 18px",borderRadius:8,background:"#e2e8f0",color:"#334155",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>إلغاء</button>
+              <button onClick={()=>{const fn=confirmDialog.onConfirm;setConfirmDialog(null);if(fn)fn();}} style={{padding:"9px 18px",borderRadius:8,background:"#dc2626",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>نعم، احذف</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* ===== MODAL: توليد الهامش الفوري ===== */}
       {footnoteModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
