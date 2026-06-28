@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
@@ -286,7 +286,25 @@ function genRef(doc, fmt) {
 export default function App() {
   const [page, setPage] = useState("home");
   const [aiModel, setAiModel] = useState(getSelectedModel());
-  const [docs, setDocs] = useState(DOCS_FROM_INDEX);
+  const BASE_DOC_IDS = React.useMemo(() => new Set(DOCS_FROM_INDEX.map(d => d.id)), []);
+  const [docs, setDocs] = useState(() => {
+    try {
+      const v = localStorage.getItem("acadarchiv_user_docs");
+      const userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
+      return [...userDocs, ...DOCS_FROM_INDEX];
+    } catch { return DOCS_FROM_INDEX; }
+  });
+  React.useEffect(() => {
+    try {
+      const userDocs = docs.filter(d => !BASE_DOC_IDS.has(d.id));
+      localStorage.setItem("acadarchiv_user_docs", JSON.stringify(userDocs));
+    } catch {}
+  }, [docs, BASE_DOC_IDS]);
+  const deleteUserDoc = (id) => {
+    setDocs(prev => prev.filter(d => d.id !== id));
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+    showNotif("🗑️ تم حذف المصدر");
+  };
   const [searchFilters, setSearchFilters] = useState({ query:"", chapterId:"", priority:"", isNew:"", status:"" });
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [aiResult, setAiResult] = useState("");
@@ -2460,6 +2478,32 @@ ${docsContext}
                 <button onClick={()=>{setUrlImport(""); setPage("url_import");}} style={{padding:"9px 16px",borderRadius:8,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>🔗 استيراد من رابط</button>
               </div>
             </div>
+
+
+          {/* ===== Added Sources List with Delete ===== */}
+          {(() => {
+            const userAdded = docs.filter(d => !BASE_DOC_IDS.has(d.id));
+            if (userAdded.length === 0) return null;
+            return (
+              <div style={{background:"white",borderRadius:12,padding:20,border:"0.5px solid #e2e8f0",marginTop:16}}>
+                <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:12}}>📋 المصادر المُضافة ({userAdded.length})</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {userAdded.map(d => (
+                    <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:"0.5px solid #e2e8f0",background:"#f8fafc"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</div>
+                        <div style={{fontSize:11,color:"#64748b"}}>
+                          <span style={{background:"#e0f2fe",color:"#0369a1",padding:"1px 6px",borderRadius:4,marginInlineEnd:6}}>{d.category || d.sourceType || "مصدر"}</span>
+                          {d.author && <span>{d.author}</span>}{d.year && <span> • {d.year}</span>}
+                        </div>
+                      </div>
+                      <button onClick={()=>setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",onConfirm:()=>deleteUserDoc(d.id)})} title="حذف" style={{padding:"6px 10px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           </div>
           );
         })()}
