@@ -2332,12 +2332,12 @@ ${docsContext}
               {filtered.map(d=>{
                 const ch = CHAPTERS_DATA.find(c=>c.id===d.chapterId);
                 return (
-                  <div key={d.id} onClick={()=>{setSelectedDoc(d);setPage("detail");}} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                  <div key={d.id} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
                     <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0,width:36,alignItems:"center"}}>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:5,padding:"1px 5px",fontSize:10,fontWeight:700}}>{d.priority}</span>
                       {d.isNew && <span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:5,padding:"1px 5px",fontSize:9}}>جديد</span>}
                     </div>
-                    <div style={{flex:1,minWidth:0}}>
+                    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelectedDoc(d);setPage("detail");}}>
                       <div style={{fontWeight:500,fontSize:13,marginBottom:2}}>{d.title}</div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
                         {d.archiveRef && <span style={{color:"#8B5CF6",fontFamily:"monospace"}}>{d.archiveRef}</span>}
@@ -2346,6 +2346,7 @@ ${docsContext}
                       </div>
                       {d.notes && <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{d.notes}</div>}
                     </div>
+                    <button onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}} title="حذف" style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",flexShrink:0,alignSelf:"flex-start"}}>🗑️</button>
                   </div>
                 );
               })}
