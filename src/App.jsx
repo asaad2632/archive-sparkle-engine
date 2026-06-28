@@ -459,7 +459,7 @@ export default function App() {
   };
 
   const removeFromBibliography = (id) => {
-    saveBibliography(bibliography.filter(b => b.id !== id));
+    saveBibliography(prev => prev.filter(b => b.id !== id));
     showNotif("🗑️ تم حذف المرجع من القائمة");
   };
 
