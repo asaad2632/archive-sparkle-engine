@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
