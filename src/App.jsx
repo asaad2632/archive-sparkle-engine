@@ -1114,21 +1114,143 @@ ${docsContext || "لم يُعثر على مصادر مطابقة"}
     try { localStorage.setItem("acadarchiv_translations", JSON.stringify(updated)); } catch {}
   };
 
-  const handleTranslatorFileUpload = (file) => {
+  const runImageOcrTranslation = async (imageDataUrls) => {
+    setTranslatorLoading(true);
+    setTranslatedResult("");
+    setKeyPoints([]);
+    setTranslatorDocMeta(null);
+    const prompt = `أنت أرشيفي متخصص في وثائق مكتب الهند البريطاني (IOR) المتعلقة بالخليج العربي خلال الحرب العالمية الثانية 1939-1945.
+هذه صور لوثيقة أرشيفية ممسوحة ضوئياً.
+المطلوب:
+1. قراءة كل النص الظاهر في الصور (OCR كامل بلغة الأصل)
+2. ترجمة النص الكامل إلى عربية أكاديمية رصينة
+3. استخراج 5 نقاط جوهرية مهمة لأطروحة دكتوراه عن الخليج العربي في الحرب العالمية الثانية
+4. اقتراح الفصل الأنسب:
+   - الفصل 1: أوضاع الخليج قبل الحرب
+   - الفصل 2: الأهمية الاستراتيجية والعسكرية
+   - الفصل 3: التحولات السياسية
+   - الفصل 4: التحولات الاقتصادية
+
+أجب بـ JSON فقط:
+{
+  "ocrText": "النص الكامل المستخرج بلغته الأصلية",
+  "docMeta": {"estimatedTitle":"","author":"","date":"","docType":"","language":"إنجليزية","suggestedChapter":""},
+  "translation": "الترجمة العربية الكاملة",
+  "keyPoints": [
+    {"rank":1,"point":"","chapter":"","importance":"★★★"},
+    {"rank":2,"point":"","chapter":"","importance":"★★★"},
+    {"rank":3,"point":"","chapter":"","importance":"★★"},
+    {"rank":4,"point":"","chapter":"","importance":"★★"},
+    {"rank":5,"point":"","chapter":"","importance":"★"}
+  ]
+}`;
+    try {
+      const content = [{ type: "text", text: prompt }];
+      for (const url of imageDataUrls) {
+        content.push({ type: "image_url", image_url: { url } });
+      }
+      const data = await callLLM({
+        forceProvider: "lovable",
+        max_tokens: 3000,
+        messages: [{ role: "user", content }],
+      });
+      const raw = data.content?.map(c => c.text || "").join("") || "{}";
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : clean);
+      if (parsed.ocrText) setTranslatorText(parsed.ocrText);
+      setTranslatedResult(parsed.translation || "لم يتم الحصول على الترجمة");
+      setKeyPoints(parsed.keyPoints || []);
+      setTranslatorDocMeta(parsed.docMeta || null);
+      showNotif("✅ تم استخراج النص والترجمة");
+    } catch {
+      showNotif("فشل تحليل الصورة — حاول مرة أخرى", "error");
+    }
+    setTranslatorLoading(false);
+  };
+
+  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+
+  const extractPdfPages = async (file) => {
+    const pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
+    const workerUrl = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join(" ") + "\n";
+    }
+    const images = [];
+    const maxPages = Math.min(pdf.numPages, 5);
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      images.push(canvas.toDataURL("image/jpeg", 0.85));
+    }
+    return { text: text.trim(), images };
+  };
+
+  const handleTranslatorFileUpload = async (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (!["txt", "md"].includes(ext)) {
-      showNotif("ارفع ملف TXT أو MD فقط — PDF يُلصق نصه يدوياً أدناه", "warn");
+    const allowed = ["txt", "md", "pdf", "jpg", "jpeg", "png", "webp"];
+    if (!allowed.includes(ext)) {
+      showNotif("ارفع TXT أو MD أو PDF أو صورة (JPG/PNG/WEBP)", "warn");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = e => {
-      setTranslatorText(e.target.result);
-      setTranslatorFileName(file.name);
-      setTranslatorFile(file);
-      showNotif(`✅ تم تحميل: ${file.name}`);
-    };
-    reader.readAsText(file, "utf-8");
+    setTranslatorFileName(file.name);
+    setTranslatorFile(file);
+
+    if (["txt", "md"].includes(ext)) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        setTranslatorText(e.target.result);
+        showNotif(`✅ تم تحميل: ${file.name}`);
+      };
+      reader.readAsText(file, "utf-8");
+      return;
+    }
+
+    if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
+      showNotif("⏳ جاري قراءة الصورة وترجمتها...");
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        await runImageOcrTranslation([dataUrl]);
+      } catch {
+        showNotif("فشل قراءة الصورة", "error");
+      }
+      return;
+    }
+
+    if (ext === "pdf") {
+      showNotif("⏳ جاري معالجة PDF...");
+      try {
+        const { text, images } = await extractPdfPages(file);
+        if (text && text.length >= 100) {
+          setTranslatorText(text);
+          showNotif("✅ تم استخراج نص PDF — اضغط زر الترجمة");
+        } else {
+          showNotif("PDF ممسوح ضوئياً — جاري OCR عبر الذكاء الاصطناعي...");
+          await runImageOcrTranslation(images);
+        }
+      } catch {
+        showNotif("فشل قراءة ملف PDF", "error");
+      }
+      return;
+    }
   };
 
   const runTranslation = async () => {
