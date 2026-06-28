@@ -25,13 +25,6 @@ export const Route = createFileRoute("/api/ai-chat")({
             max_tokens?: number;
             model?: string;
           };
-          const key = process.env.LOVABLE_API_KEY;
-          if (!key) {
-            return new Response(JSON.stringify({ error: "Missing LOVABLE_API_KEY" }), {
-              status: 500,
-              headers: { "Content-Type": "application/json" },
-            });
-          }
           const model = body.model || "google/gemini-3-flash-preview";
           const isDeepSeek = model.startsWith("deepseek/");
 
