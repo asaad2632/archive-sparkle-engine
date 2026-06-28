@@ -549,10 +549,12 @@ export default function App() {
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
     setLibUploading(true);
+    const IMG_EXT = ["jpg","jpeg","png","webp","gif","tif","tiff","bmp","heic"];
     for (const file of Array.from(files)) {
       const ext = (file.name.split(".").pop() || "").toLowerCase();
-      if (!["pdf","md","txt","docx"].includes(ext)) {
-        showNotif(`⚠️ ${file.name} — يُقبل فقط PDF و DOCX و MD و TXT`, "error");
+      const isImage = IMG_EXT.includes(ext);
+      if (!["pdf","md","txt","docx", ...IMG_EXT].includes(ext)) {
+        showNotif(`⚠️ ${file.name} — يُقبل: PDF, DOCX, MD, TXT, صور (JPG/PNG/TIFF…)`, "error");
         continue;
       }
       if (file.size > MAX_LIB_FILE_SIZE) {
@@ -560,13 +562,18 @@ export default function App() {
         continue;
       }
 
-      // Extract content per type
+      // Extract content per type — unified pipeline: every file becomes either
+      // raw text OR a base64 blob sent to Gemini multimodal (handles OCR natively).
       let payload = null;
       let storedText = null;
       try {
         if (ext === "pdf") {
           const base64 = await readFileAsBase64(file);
           payload = { base64, mimeType: "application/pdf" };
+        } else if (isImage) {
+          const base64 = await readFileAsBase64(file);
+          const mime = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
+          payload = { base64, mimeType: mime };
         } else if (ext === "docx") {
           const arrayBuffer = await file.arrayBuffer();
           const { value } = await mammoth.extractRawText({ arrayBuffer });
@@ -1789,6 +1796,55 @@ ${docsContext}
               );
             })()}
 
+            {/* ===== تصنيف المصادر الأكاديمية مع نسب الإنجاز لكل فئة ===== */}
+            {(() => {
+              const CATEGORIES = [
+                { key: "كتاب",            label: "📚 الكتب",                color: "#3B82F6", target: 40 },
+                { key: "رسالة علمية",     label: "🎓 الرسائل الجامعية",      color: "#8B5CF6", target: 15 },
+                { key: "أطروحة دكتوراه",  label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
+                { key: "بحث",             label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
+                { key: "مقالة",           label: "📰 المقالات والدوريات",    color: "#F59E0B", target: 20 },
+                { key: "صحيفة",           label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
+                { key: "وثيقة أرشيفية",   label: "🗂️ الوثائق الأرشيفية",     color: "#10B981", target: 25 },
+                { key: "تقرير",           label: "📑 التقارير",              color: "#64748b", target: 10 },
+              ];
+              const allSources = [...docs, ...library];
+              const totalSources = allSources.length || 1;
+              return (
+                <div style={{background:"white",borderRadius:14,padding:"18px 20px",border:"0.5px solid #e2e8f0",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontWeight:700,fontSize:14,color:"#1e3a5f"}}>🏷️ تصنيف المصادر الأكاديمية حسب النوع</div>
+                    <span style={{fontSize:11,color:"#64748b"}}>المجموع: {allSources.length} مصدر</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                    {CATEGORIES.map(c => {
+                      const count = allSources.filter(s => (s.sourceType || s.category) === c.key).length;
+                      const pct = Math.min(100, Math.round((count / c.target) * 100));
+                      const bibs = bibliography.filter(b => b.category === c.key).length;
+                      return (
+                        <div key={c.key} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${c.color}22`}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                            <span style={{fontSize:11,fontWeight:600,color:c.color}}>{c.label}</span>
+                            <span style={{fontSize:12,fontWeight:700,color:pct >= 100 ? "#10B981" : c.color}}>{pct}%</span>
+                          </div>
+                          <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:5}}>
+                            <div style={{height:"100%",width:`${pct}%`,background:c.color,borderRadius:3,transition:"width 0.6s ease"}}/>
+                          </div>
+                          <div style={{display:"flex",gap:10,fontSize:10,color:"#94a3b8"}}>
+                            <span>📄 {count} / {c.target}</span>
+                            <span>📝 {bibs} هامش</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:10,fontSize:10,color:"#94a3b8",textAlign:"center"}}>
+                    * النسبة محسوبة على هدف تقديري لكل فئة — يكتشف الذكاء الاصطناعي النوع تلقائياً عند رفع كل ملف
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ===== بطاقات الإحصاء السريع ===== */}
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
               {[
@@ -2295,7 +2351,7 @@ ${docsContext}
                 <p style={{color:"#64748b",fontSize:12}}>ارفع مصادرك (PDF، MD، TXT) أو أضف رابطاً — سيحللها الذكاء الاصطناعي ويصنفها لفصول أطروحتك تلقائياً</p>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <input ref={libFileRef} type="file" accept=".pdf,.docx,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
+                <input ref={libFileRef} type="file" accept=".pdf,.docx,.md,.txt,.jpg,.jpeg,.png,.webp,.tif,.tiff,.bmp,.gif,image/*" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
                 <button onClick={()=>libFileRef.current?.click()} disabled={libUploading} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
                   {libUploading?"⏳ جاري الرفع...":"📁 رفع ملفات"}
                 </button>
@@ -2306,7 +2362,7 @@ ${docsContext}
             <div style={{background:"white",borderRadius:12,padding:16,border:"2px dashed #bfdbfe",marginBottom:14,textAlign:"center",cursor:"pointer"}} onClick={()=>libFileRef.current?.click()} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#3B82F6"}} onDragLeave={e=>e.currentTarget.style.borderColor="#bfdbfe"} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#bfdbfe";handleLibFileUpload(e.dataTransfer.files);}}>
               <div style={{fontSize:36,marginBottom:6}}>📂</div>
               <div style={{fontWeight:600,color:"#3B82F6",marginBottom:4}}>اسحب وأسقط ملفاتك هنا أو اضغط للاختيار</div>
-              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR للممسوح ضوئياً) • DOCX • Markdown (MD) • نص عادي (TXT) — حجم أقصى 50MB للملف الواحد</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حد أقصى 50MB</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>يمكن رفع عدة ملفات دفعة واحدة — كتب، رسائل، بحوث، مقالات، صحف، وثائق...</div>
             </div>
 
