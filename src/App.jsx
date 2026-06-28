@@ -876,13 +876,13 @@ JSON المطلوب (أعده فقط بدون backticks):
     if (!q) return;
     setAiLoading(true);
     setAiResult("");
-    const docsCtx = docs.slice(0,30).map(d=>`[${d.id}] ${d.title} | ${d.archiveRef||""} | ف${d.chapterId}`).join("\n");
+    const docsCtx = combinedDocs.slice(0,30).map(d=>`[${d.id}] ${d.title} | ${d.archiveRef||""} | ف${d.chapterId}`).join("\n");
     try {
       const data = await callLLM({
           max_tokens:1200,
           messages:[{ role:"user", content:`أنت مساعد بحثي لأطروحة "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
 سؤال الباحث: "${q}"
-الوثائق المتاحة (${docs.length} وثيقة):
+الوثائق المتاحة (${combinedDocs.length} وثيقة):
 ${docsCtx}
 أجب بتحليل أكاديمي، اذكر أرقام الوثائق الأكثر صلة، واقترح خطوات بحثية. أجب بالعربية.` }]
         });
@@ -950,7 +950,7 @@ ${docsCtx}
 
   const handleExport = () => {
     if (!exportSelected.length) { showNotif("اختر وثيقة واحدة على الأقل","error"); return; }
-    const sel = docs.filter(d=>exportSelected.includes(d.id));
+    const sel = combinedDocs.filter(d=>exportSelected.includes(d.id));
     let text;
     if (exportFormat.startsWith("custom_")) {
       const idx = parseInt(exportFormat.replace("custom_",""));
@@ -1216,9 +1216,9 @@ ${textToTranslate.substring(0, 4000)}
 
   // حساب نسبة إنجاز كل فصل: يحسب عدد الوثائق + الهوامش المنجزة
   const calcChapterProgress = (chapterId) => {
-    const chDocs   = docs.filter(d => d.chapterId === chapterId);
+    const chDocs   = combinedDocs.filter(d => d.chapterId === chapterId);
     const chBibs   = bibliography.filter(b => {
-      const doc = docs.find(d => d.id === b.docId);
+      const doc = combinedDocs.find(d => d.id === b.docId);
       return doc?.chapterId === chapterId;
     });
     // نسبة وجود وثائق: نحتاج 10 وثائق كحد مثالي لكل فصل
@@ -1247,7 +1247,7 @@ ${textToTranslate.substring(0, 4000)}
   ];
 
   const calcDiversityForChapter = (chapterId) => {
-    const chDocs = docs.filter(d => d.chapterId === chapterId);
+    const chDocs = combinedDocs.filter(d => d.chapterId === chapterId);
     const total  = chDocs.length || 1;
     return DIVERSITY_CATEGORIES.map(dc => {
       const count = chDocs.filter(d => dc.cats.includes(d.category || "مصدر أولي")).length;
@@ -1256,7 +1256,7 @@ ${textToTranslate.substring(0, 4000)}
   };
 
   const calcDiversityForSection = (sectionId) => {
-    const secDocs = docs.filter(d => d.sectionId === sectionId || d.sectionId?.startsWith(sectionId));
+    const secDocs = combinedDocs.filter(d => d.sectionId === sectionId || d.sectionId?.startsWith(sectionId));
     const total   = secDocs.length || 1;
     return DIVERSITY_CATEGORIES.map(dc => {
       const count = secDocs.filter(d => dc.cats.includes(d.category || "مصدر أولي")).length;
@@ -1328,7 +1328,7 @@ ${textToTranslate.substring(0, 4000)}
     setDefenseMessages([]);
     setDefenseLoading(true);
 
-    const chDocs     = docs.filter(d => d.chapterId === ch.id);
+    const chDocs     = combinedDocs.filter(d => d.chapterId === ch.id);
     const diversity  = calcDiversityForChapter(ch.id);
     const diversityText = diversity.map(d => `${d.label}: ${d.count} مصدر (${d.pct}%)`).join("، ");
     const docsContext = chDocs.slice(0, 15).map(d => `• "${d.title}" [${d.archiveRef||"—"}]`).join("\n");
@@ -1369,7 +1369,7 @@ ${docsContext}
     setDefenseInput("");
     setDefenseLoading(true);
 
-    const chDocs     = docs.filter(d => d.chapterId === defenseChapter?.id);
+    const chDocs     = combinedDocs.filter(d => d.chapterId === defenseChapter?.id);
     const diversity  = calcDiversityForChapter(defenseChapter?.id);
     const diversityText = diversity.map(d => `${d.label}: ${d.count} مصدر (${d.pct}%)`).join("، ");
 
@@ -1632,7 +1632,7 @@ ${docsContext}
             </div>
 
             {chapters.map(ch=>{
-              const chDocs = docs.filter(d=>d.chapterId===ch.id);
+              const chDocs = combinedDocs.filter(d=>d.chapterId===ch.id);
               const mainSections = ch.sections.filter(s=>!s.id.includes("a")&&!s.id.includes("b")&&!s.id.includes("c"));
               const isEditingThisChapter = editingChapter?.id === ch.id;
               return (
@@ -1683,7 +1683,7 @@ ${docsContext}
                   {/* ===== المباحث الرئيسية ===== */}
                   <div style={{padding:"12px 18px"}}>
                     {mainSections.map(sec=>{
-                      const secDocs = docs.filter(d=>d.sectionId===sec.id||d.sectionId?.startsWith(sec.id));
+                      const secDocs = combinedDocs.filter(d=>d.sectionId===sec.id||d.sectionId?.startsWith(sec.id));
                       const subSections = ch.sections.filter(s=>s.id.startsWith(sec.id)&&s.id!==sec.id);
                       const isEditingThisSec = editingSection?.chId===ch.id && editingSection?.secId===sec.id;
                       return (
@@ -1801,8 +1801,8 @@ ${docsContext}
                   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
                     {chapters.map(ch => {
                       const pct  = calcChapterProgress(ch.id);
-                      const cnt  = docs.filter(d => d.chapterId === ch.id).length;
-                      const bibs = bibliography.filter(b => docs.find(d => d.id === b.docId && d.chapterId === ch.id)).length;
+                      const cnt  = combinedDocs.filter(d => d.chapterId === ch.id).length;
+                      const bibs = bibliography.filter(b => combinedDocs.find(d => d.id === b.docId && d.chapterId === ch.id)).length;
                       return (
                         <div key={ch.id} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${ch.color}20`}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
@@ -1899,7 +1899,7 @@ ${docsContext}
                 <div style={{fontWeight:600,fontSize:13,marginBottom:14,color:"#1e293b"}}>📊 تنوع الأوزان العلمية لكل فصل</div>
                 {chapters.map(ch => {
                   const diversity = calcDiversityForChapter(ch.id);
-                  const total     = docs.filter(d => d.chapterId === ch.id).length;
+                  const total     = combinedDocs.filter(d => d.chapterId === ch.id).length;
                   return (
                     <div key={ch.id} style={{marginBottom:14}}>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
@@ -2000,7 +2000,7 @@ ${docsContext}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
                       {mainSections.map(sec => {
                         const secDiversity = calcDiversityForSection(sec.id);
-                        const secDocs      = docs.filter(d => d.sectionId === sec.id || d.sectionId?.startsWith(sec.id));
+                        const secDocs      = combinedDocs.filter(d => d.sectionId === sec.id || d.sectionId?.startsWith(sec.id));
                         if (secDocs.length === 0) return null;
                         return (
                           <div key={sec.id} style={{background:"#f8fafc",borderRadius:8,padding:"9px 11px",border:`0.5px solid ${ch.color}15`}}>
@@ -2312,12 +2312,12 @@ ${docsContext}
                 )}
 
                 <div style={{display:"flex",gap:8,marginBottom:10}}>
-                  <button onClick={()=>setExportSelected(docs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل ({docs.length})</button>
-                  <button onClick={()=>setExportSelected(docs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
+                  <button onClick={()=>setExportSelected(combinedDocs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل ({combinedDocs.length})</button>
+                  <button onClick={()=>setExportSelected(combinedDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
                   <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
                 </div>
                 <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
-                  {docs.map(d=>(
+                  {combinedDocs.map(d=>(
                     <label key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",cursor:"pointer",fontSize:11}}>
                       <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
@@ -3148,7 +3148,7 @@ ${docsContext}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
                   {chapters.map(ch => {
-                    const chDocs     = docs.filter(d => d.chapterId === ch.id);
+                    const chDocs     = combinedDocs.filter(d => d.chapterId === ch.id);
                     const diversity  = calcDiversityForChapter(ch.id);
                     const progress   = calcChapterProgress(ch.id);
                     return (
