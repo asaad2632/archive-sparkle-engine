@@ -2039,9 +2039,10 @@ ${docsContext}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
                     {CATEGORIES.map(c => {
-                      const count = allSources.filter(s => (s.sourceType || s.category) === c.key).length;
+                      const count = allSources.filter(s => c.keys.includes(s.sourceType || s.category)).length;
                       const pct = Math.min(100, Math.round((count / c.target) * 100));
-                      const bibs = bibliography.filter(b => b.category === c.key).length;
+                      const bibs = bibliography.filter(b => c.keys.includes(b.category)).length;
+
                       return (
                         <div key={c.key} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${c.color}22`}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
