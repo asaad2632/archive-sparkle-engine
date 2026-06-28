@@ -2715,7 +2715,7 @@ ${docsContext}
                           </div>
                         </div>
                         <div style={{display:"flex",gap:4,flexShrink:0}}>
-                          <button onClick={e=>{e.stopPropagation();deleteLibSrc(src.id);}} style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>🗑️</button>
+                          <button onClick={e=>{e.stopPropagation();setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",onConfirm:()=>deleteLibSrc(src.id)});}} title="حذف" style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>🗑️</button>
                         </div>
                       </div>
 
