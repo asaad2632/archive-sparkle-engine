@@ -376,6 +376,7 @@ export default function App() {
 
   // ===== الميزة 2: نافذة توليد الهامش الفوري =====
   const [footnoteModal, setFootnoteModal]     = useState(null); // الوثيقة المستهدفة
+  const [confirmDialog, setConfirmDialog]     = useState(null); // {title,message,onConfirm}
   const [footnotePageNum, setFootnotePageNum] = useState("");
   const [footnoteResult, setFootnoteResult]   = useState("");
   const footnotePageRef = useRef(null);
