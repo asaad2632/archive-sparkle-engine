@@ -313,7 +313,9 @@ export default function App() {
       "أطروحة دكتوراه": "{المؤلف}. {العنوان}. أطروحة دكتوراه، {الجامعة}، {السنة}م.",
     }
   });
-  const [addForm, setAddForm] = useState({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
+  const EMPTY_ADD_FORM = { title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"وثيقة أرشيفية",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع", edition:"", place:"", publisher:"", college:"", university:"", journal:"", volume:"", issue:"", pages:"", conference:"", newspaper:"", url:"", visitDate:"", agency:"" };
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [exportTypeFilter, setExportTypeFilter] = useState("");
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
@@ -2358,31 +2360,61 @@ ${docsContext}
         )}
 
         {/* ===== ADD ===== */}
-        {page==="add" && (
+        {page==="add" && (() => {
+          const SOURCE_TYPES_ADD = ["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي"];
+          // map each source type to ordered list of dynamic fields
+          const FIELDS_BY_TYPE = {
+            "وثيقة أرشيفية": [{k:"archiveRef",l:"الرقم الأرشيفي (IOR)",ph:"IOR/R/15/2/..."},{k:"author",l:"المؤلف / الجهة",ph:"اسم المؤلف"},{k:"year",l:"السنة",ph:"1942",t:"number"}],
+            "كتاب عربي":     [{k:"author",l:"المؤلف",ph:"اسم المؤلف"},{k:"edition",l:"الطبعة",ph:"الأولى"},{k:"place",l:"مكان النشر",ph:"بيروت"},{k:"publisher",l:"الناشر",ph:"دار النشر"},{k:"year",l:"السنة",ph:"1990",t:"number"}],
+            "كتاب أجنبي":    [{k:"author",l:"المؤلف",ph:"Author Name"},{k:"edition",l:"الطبعة",ph:"1st"},{k:"place",l:"مكان النشر",ph:"London"},{k:"publisher",l:"الناشر",ph:"Routledge"},{k:"year",l:"السنة",ph:"1990",t:"number"}],
+            "رسالة ماجستير":  [{k:"author",l:"اسم الباحث",ph:""},{k:"college",l:"الكلية",ph:""},{k:"university",l:"الجامعة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
+            "أطروحة دكتوراه": [{k:"author",l:"اسم الباحث",ph:""},{k:"college",l:"الكلية",ph:""},{k:"university",l:"الجامعة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
+            "بحث علمي":       [{k:"author",l:"المؤلف",ph:""},{k:"journal",l:"اسم المجلة",ph:""},{k:"volume",l:"المجلد",ph:""},{k:"issue",l:"العدد",ph:""},{k:"year",l:"السنة",ph:"",t:"number"},{k:"pages",l:"الصفحات",ph:"45-67"}],
+            "مجلة علمية":     [{k:"author",l:"المؤلف",ph:""},{k:"journal",l:"اسم المجلة",ph:""},{k:"volume",l:"المجلد",ph:""},{k:"issue",l:"العدد",ph:""},{k:"year",l:"السنة",ph:"",t:"number"},{k:"pages",l:"الصفحات",ph:"45-67"}],
+            "مؤتمر علمي":     [{k:"author",l:"المؤلف",ph:""},{k:"conference",l:"اسم المؤتمر",ph:""},{k:"place",l:"المكان",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
+            "صحيفة":          [{k:"newspaper",l:"اسم الصحيفة",ph:""},{k:"issue",l:"رقم العدد",ph:""},{k:"visitDate",l:"التاريخ",ph:"1942-05-10"}],
+            "موقع إلكتروني":  [{k:"author",l:"المؤلف",ph:""},{k:"url",l:"الرابط",ph:"https://..."},{k:"visitDate",l:"تاريخ الزيارة",ph:"2025-01-15"}],
+            "موسوعة":         [{k:"volume",l:"المجلد",ph:""},{k:"edition",l:"الطبعة",ph:""},{k:"publisher",l:"الناشر",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
+            "تقرير رسمي":     [{k:"author",l:"المؤلف",ph:""},{k:"agency",l:"الجهة المصدرة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
+          };
+          const dynFields = FIELDS_BY_TYPE[addForm.category] || FIELDS_BY_TYPE["وثيقة أرشيفية"];
+          return (
           <div>
-            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>➕ إضافة وثيقة</h1>
-            <p style={{color:"#64748b",fontSize:12,marginBottom:16}}>أضف وثيقة يدوياً أو أكمل البيانات المستخرجة من رابط</p>
+            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>➕ إضافة مصدر</h1>
+            <p style={{color:"#64748b",fontSize:12,marginBottom:16}}>اختر نوع المصدر أولاً — ستظهر الحقول المناسبة تلقائياً</p>
             <div style={{background:"white",borderRadius:12,padding:20,border:"0.5px solid #e2e8f0"}}>
+              {/* ====== SOURCE TYPE FIRST ====== */}
+              <div style={{background:"#eff6ff",borderRadius:10,padding:12,marginBottom:16,border:"0.5px solid #bfdbfe"}}>
+                <label style={{fontSize:12,color:"#1e40af",fontWeight:700,display:"block",marginBottom:6}}>🏷️ نوع المصدر *</label>
+                <select value={addForm.category} onChange={e=>setAddForm(p=>({...p,category:e.target.value}))} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"0.5px solid #93c5fd",fontSize:14,fontFamily:"inherit",fontWeight:600,background:"white"}}>
+                  {SOURCE_TYPES_ADD.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>العنوان *</label>
-                  <input value={addForm.title} onChange={e=>setAddForm(p=>({...p,title:e.target.value}))} placeholder="عنوان الوثيقة" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <input value={addForm.title} onChange={e=>setAddForm(p=>({...p,title:e.target.value}))} placeholder="عنوان المصدر" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
-                {[
-                  {key:"archiveRef",label:"الرقم الأرشيفي (IOR)",ph:"IOR/R/15/2/..."},
-                  {key:"author",label:"المؤلف / الجهة",ph:"اسم المؤلف"},
-                  {key:"year",label:"السنة",ph:"1942",type:"number"},
-                  {key:"keywords",label:"الكلمات المفتاحية",ph:"بريطانيا، نفط، استراتيجية"},
-                ].map(f=>(
-                  <div key={f.key}>
-                    <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>{f.label}</label>
-                    <input type={f.type||"text"} value={addForm[f.key]} onChange={e=>setAddForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+
+                {/* ====== DYNAMIC FIELDS PER TYPE ====== */}
+                {dynFields.map(f=>(
+                  <div key={f.k}>
+                    <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>{f.l}</label>
+                    <input type={f.t||"text"} value={addForm[f.k]||""} onChange={e=>setAddForm(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
                   </div>
                 ))}
+
+                {/* keywords always */}
+                <div>
+                  <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>الكلمات المفتاحية</label>
+                  <input value={addForm.keywords} onChange={e=>setAddForm(p=>({...p,keywords:e.target.value}))} placeholder="بريطانيا، نفط، استراتيجية" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                </div>
+
+                {/* chapter / priority / country common */}
                 {[
                   {key:"chapterId",label:"الفصل",opts:[{v:"",l:"اختر فصلاً"},...CHAPTERS_DATA.map(c=>({v:c.id,l:c.titleAr.split(":")[0]}))]},
                   {key:"priority",label:"الأولوية",opts:[{v:"★★★",l:"★★★ اقرأه كاملاً"},{v:"★★",l:"★★ أوراق محددة"},{v:"★",l:"★ احفظ المرجع"}]},
-                  {key:"category",label:"النوع",opts:CATEGORIES.map(c=>({v:c,l:c}))},
                   {key:"country",label:"الدولة",opts:[{v:"",l:"اختر"},...COUNTRIES.map(c=>({v:c,l:c}))]},
                 ].map(f=>(
                   <div key={f.key}>
@@ -2398,23 +2430,24 @@ ${docsContext}
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>ملاحظات</label>
-                  <textarea value={addForm.notes} onChange={e=>setAddForm(p=>({...p,notes:e.target.value}))} rows={3} placeholder="أهمية الوثيقة، المحتوى المتوقع..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                  <textarea value={addForm.notes} onChange={e=>setAddForm(p=>({...p,notes:e.target.value}))} rows={3} placeholder="أهمية المصدر، المحتوى المتوقع..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                 </div>
                 <div>
                   <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
                     <input type="checkbox" checked={addForm.isNew} onChange={e=>setAddForm(p=>({...p,isNew:e.target.checked}))}/>
-                    وثيقة جديدة (مُكتشفة مؤخراً)
+                    مصدر جديد (مُكتشف مؤخراً)
                   </label>
                 </div>
               </div>
               <div style={{display:"flex",gap:10,marginTop:16}}>
-                <button onClick={handleAddDoc} style={{padding:"9px 22px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>إضافة الوثيقة</button>
-                <button onClick={()=>setAddForm({title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع"})} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>مسح</button>
+                <button onClick={handleAddDoc} style={{padding:"9px 22px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>إضافة المصدر</button>
+                <button onClick={()=>setAddForm(EMPTY_ADD_FORM)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>مسح</button>
                 <button onClick={()=>{setUrlImport(""); setPage("url_import");}} style={{padding:"9px 16px",borderRadius:8,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>🔗 استيراد من رابط</button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* ===== EXPORT ===== */}
         {page==="export" && (
@@ -2505,18 +2538,22 @@ ${docsContext}
                   </div>
                 )}
 
-                <div style={{display:"flex",gap:8,marginBottom:10}}>
-                  <button onClick={()=>setExportSelected(combinedDocs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل ({combinedDocs.length})</button>
+                <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+                  <button onClick={()=>setExportSelected(combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل</button>
                   <button onClick={()=>setExportSelected(combinedDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
                   <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
+                  <select value={exportTypeFilter} onChange={e=>setExportTypeFilter(e.target.value)} style={{marginInlineStart:"auto",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
+                    <option value="">🏷️ كل الأنواع</option>
+                    {["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
                 <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
-                  {combinedDocs.map(d=>(
+                  {combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>(
                     <label key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",cursor:"pointer",fontSize:11}}>
                       <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
                       <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
-                      <span style={{fontSize:9,color:"#94a3b8",flexShrink:0}}>{d.category||"وثيقة"}</span>
+                      <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
                     </label>
                   ))}
                 </div>
