@@ -2627,7 +2627,7 @@ ${docsContext}
                 </select>
                 <select value={libFilter.category} onChange={e=>setLibFilter(p=>({...p,category:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأنواع</option>
-                  {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
+                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <select value={libFilter.priority} onChange={e=>setLibFilter(p=>({...p,priority:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأولويات</option>
@@ -2759,7 +2759,7 @@ ${docsContext}
                                   <div>
                                     <label style={{fontSize:10,color:"#94a3b8",display:"block",marginBottom:3}}>نوع المصدر</label>
                                     <select value={src.sourceType||""} onChange={e=>updateLibSrc(src.id,{sourceType:e.target.value})} style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                                      {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
+                                      {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
                                   </div>
                                   <div style={{gridColumn:"1/-1"}}>
