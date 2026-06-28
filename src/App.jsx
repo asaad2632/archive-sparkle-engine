@@ -287,12 +287,24 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [aiModel, setAiModel] = useState(getSelectedModel());
   const BASE_DOC_IDS = React.useMemo(() => new Set(DOCS_FROM_INDEX.map(d => d.id)), []);
+  const [deletedBaseDocs, setDeletedBaseDocs] = useState(() => {
+    try {
+      const v = localStorage.getItem("acadarchiv_deleted_base_docs");
+      return new Set(v && v !== "undefined" ? JSON.parse(v) : []);
+    } catch { return new Set(); }
+  });
   const [docs, setDocs] = useState(() => {
+    let deleted = new Set();
+    try {
+      const dv = localStorage.getItem("acadarchiv_deleted_base_docs");
+      deleted = new Set(dv && dv !== "undefined" ? JSON.parse(dv) : []);
+    } catch {}
+    let userDocs = [];
     try {
       const v = localStorage.getItem("acadarchiv_user_docs");
-      const userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
-      return [...userDocs, ...DOCS_FROM_INDEX];
-    } catch { return DOCS_FROM_INDEX; }
+      userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
+    } catch {}
+    return [...userDocs, ...DOCS_FROM_INDEX.filter(d => !deleted.has(d.id))];
   });
   React.useEffect(() => {
     try {
@@ -300,11 +312,44 @@ export default function App() {
       localStorage.setItem("acadarchiv_user_docs", JSON.stringify(userDocs));
     } catch {}
   }, [docs, BASE_DOC_IDS]);
-  const deleteUserDoc = (id) => {
-    setDocs(prev => prev.filter(d => d.id !== id));
+  React.useEffect(() => {
+    try { localStorage.setItem("acadarchiv_deleted_base_docs", JSON.stringify([...deletedBaseDocs])); } catch {}
+  }, [deletedBaseDocs]);
+
+  // Unified delete: handles base docs, user-added docs, and library items.
+  // Also cascades to bibliography and clears selection.
+  const handleDeleteSource = (id) => {
+    if (id == null) return;
+    const isLibId = typeof id === "string" && id.startsWith("lib-");
+    if (isLibId) {
+      const realId = id.slice(4);
+      const libIdNum = Number(realId);
+      saveLibrary(library.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      if (libSelected && (String(libSelected.id) === realId || libSelected.id === libIdNum)) setLibSelected(null);
+    } else if (BASE_DOC_IDS.has(id)) {
+      setDeletedBaseDocs(prev => { const n = new Set(prev); n.add(id); return n; });
+      setDocs(prev => prev.filter(d => d.id !== id));
+    } else {
+      // user-added doc (also catches library items mistakenly passed by raw id)
+      setDocs(prev => prev.filter(d => d.id !== id));
+      const libMatch = library.find(s => s.id === id || String(s.id) === String(id));
+      if (libMatch) {
+        saveLibrary(library.filter(s => s.id !== libMatch.id));
+        if (libSelected?.id === libMatch.id) setLibSelected(null);
+      }
+    }
     if (selectedDoc?.id === id) setSelectedDoc(null);
+    // cascade to bibliography
+    saveBibliography(prev => prev.filter(b => b.docId !== id && b.id !== id));
     showNotif("🗑️ تم حذف المصدر");
   };
+  const deleteUserDoc = handleDeleteSource;
+
+  const askDeleteSource = (id) => setConfirmDialog({
+    title: "تأكيد الحذف",
+    message: "هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",
+    onConfirm: () => handleDeleteSource(id),
+  });
   const [searchFilters, setSearchFilters] = useState({ query:"", chapterId:"", priority:"", isNew:"", status:"" });
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [aiResult, setAiResult] = useState("");
@@ -1974,6 +2019,12 @@ ${docsContext}
                                     style={{padding:"3px 8px",borderRadius:5,background:"#faf5ff",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
                                     📝
                                   </button>
+                                  <button
+                                    onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}}
+                                    title="حذف"
+                                    style={{padding:"3px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
+                                    🗑️
+                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -2287,12 +2338,12 @@ ${docsContext}
               {filtered.map(d=>{
                 const ch = CHAPTERS_DATA.find(c=>c.id===d.chapterId);
                 return (
-                  <div key={d.id} onClick={()=>{setSelectedDoc(d);setPage("detail");}} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                  <div key={d.id} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
                     <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0,width:36,alignItems:"center"}}>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:5,padding:"1px 5px",fontSize:10,fontWeight:700}}>{d.priority}</span>
                       {d.isNew && <span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:5,padding:"1px 5px",fontSize:9}}>جديد</span>}
                     </div>
-                    <div style={{flex:1,minWidth:0}}>
+                    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelectedDoc(d);setPage("detail");}}>
                       <div style={{fontWeight:500,fontSize:13,marginBottom:2}}>{d.title}</div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
                         {d.archiveRef && <span style={{color:"#8B5CF6",fontFamily:"monospace"}}>{d.archiveRef}</span>}
@@ -2301,6 +2352,7 @@ ${docsContext}
                       </div>
                       {d.notes && <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{d.notes}</div>}
                     </div>
+                    <button onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}} title="حذف" style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",flexShrink:0,alignSelf:"flex-start"}}>🗑️</button>
                   </div>
                 );
               })}
