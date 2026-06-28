@@ -286,7 +286,25 @@ function genRef(doc, fmt) {
 export default function App() {
   const [page, setPage] = useState("home");
   const [aiModel, setAiModel] = useState(getSelectedModel());
-  const [docs, setDocs] = useState(DOCS_FROM_INDEX);
+  const BASE_DOC_IDS = React.useMemo(() => new Set(DOCS_FROM_INDEX.map(d => d.id)), []);
+  const [docs, setDocs] = useState(() => {
+    try {
+      const v = localStorage.getItem("acadarchiv_user_docs");
+      const userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
+      return [...userDocs, ...DOCS_FROM_INDEX];
+    } catch { return DOCS_FROM_INDEX; }
+  });
+  React.useEffect(() => {
+    try {
+      const userDocs = docs.filter(d => !BASE_DOC_IDS.has(d.id));
+      localStorage.setItem("acadarchiv_user_docs", JSON.stringify(userDocs));
+    } catch {}
+  }, [docs, BASE_DOC_IDS]);
+  const deleteUserDoc = (id) => {
+    setDocs(prev => prev.filter(d => d.id !== id));
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+    showNotif("🗑️ تم حذف المصدر");
+  };
   const [searchFilters, setSearchFilters] = useState({ query:"", chapterId:"", priority:"", isNew:"", status:"" });
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [aiResult, setAiResult] = useState("");
