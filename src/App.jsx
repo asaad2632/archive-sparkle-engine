@@ -320,14 +320,14 @@ export default function App() {
     if (!validatePageNumber()) return;
     const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
     addToBibliography(footnoteModal, result);
+    setFootnoteModal(null);
+    setPage("bibliography");
     try {
       await navigator.clipboard.writeText(result);
       showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
     } catch {
       showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
     }
-    setFootnoteModal(null);
-    setPage("bibliography");
   };
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
