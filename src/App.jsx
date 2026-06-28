@@ -313,7 +313,9 @@ export default function App() {
       "أطروحة دكتوراه": "{المؤلف}. {العنوان}. أطروحة دكتوراه، {الجامعة}، {السنة}م.",
     }
   });
-  const [addForm, setAddForm] = useState({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
+  const EMPTY_ADD_FORM = { title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"وثيقة أرشيفية",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع", edition:"", place:"", publisher:"", college:"", university:"", journal:"", volume:"", issue:"", pages:"", conference:"", newspaper:"", url:"", visitDate:"", agency:"" };
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
+  const [exportTypeFilter, setExportTypeFilter] = useState("");
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
