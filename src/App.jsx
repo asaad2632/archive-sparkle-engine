@@ -3048,15 +3048,15 @@ ${docsContext}
                     <input
                       ref={translatorFileRef}
                       type="file"
-                      accept=".txt,.md"
+                      accept=".txt,.md,.pdf,.jpg,.jpeg,.png,.webp"
                       style={{display:"none"}}
                       onChange={e=>handleTranslatorFileUpload(e.target.files[0])}
                     />
                     <div style={{fontSize:28,marginBottom:6}}>📄</div>
                     <div style={{fontSize:12,fontWeight:500,color:"#3B82F6",marginBottom:3}}>
-                      {translatorFileName ? `✅ ${translatorFileName}` : "اسحب ملف TXT أو MD هنا أو اضغط للاختيار"}
+                      {translatorFileName ? `✅ ${translatorFileName}` : "اسحب ملف TXT / MD / PDF / صورة هنا أو اضغط للاختيار"}
                     </div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>للـ PDF: افتحه وانسخ النص وألصقه في الحقل أدناه</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>PDF نصي يُستخرج تلقائياً • PDF ممسوح + صور (JPG/PNG/WEBP) عبر OCR بالذكاء الاصطناعي</div>
                   </div>
 
                   {/* لغة الوثيقة */}
