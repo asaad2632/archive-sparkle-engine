@@ -1544,15 +1544,22 @@ ${docsContext}
               <input
                 ref={footnotePageRef}
                 type="text"
+                required
                 value={footnotePageNum}
                 onChange={e=>{ setFootnotePageNum(e.target.value); setFootnoteResult(""); }}
-                onKeyDown={e=>{ if(e.key==="Enter") handleGenerateFootnote(); }}
-                placeholder="مثال: 45 أو 45-47"
-                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+                onKeyDown={e=>{ if(e.key==="Enter") copyFootnoteAndRegister(); }}
+                placeholder="مطلوب — مثال: 45 أو 45-47"
+                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${footnotePageNum.trim()?"#86efac":"#fca5a5"}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
               />
+              {!footnotePageNum.trim() && (
+                <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل أي عملية</div>
+              )}
             </div>
-            <button onClick={handleGenerateFootnote} style={{width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
-              توليد الهامش
+            <button
+              onClick={handleGenerateFootnote}
+              disabled={!footnotePageNum.trim()}
+              style={{width:"100%",padding:"9px",borderRadius:8,background:footnotePageNum.trim()?"#3B82F6":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
+              معاينة الهامش
             </button>
             {/* نتيجة الهامش */}
             {footnoteResult && (
@@ -1563,13 +1570,14 @@ ${docsContext}
                 </div>
               </div>
             )}
-            {/* أزرار النسخ والإغلاق */}
+            {/* الإجراء الرئيسي: نسخ + تسجيل بضغطة واحدة */}
             <div style={{display:"flex",gap:8}}>
-              {footnoteResult && (
-                <button onClick={copyFootnoteAndRegister} style={{flex:1,padding:"9px",borderRadius:8,background:"#10B981",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
-                  📋 نسخ الهامش + إضافة للمراجع النهائية
-                </button>
-              )}
+              <button
+                onClick={copyFootnoteAndRegister}
+                disabled={!footnotePageNum.trim()}
+                style={{flex:1,padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
+                📋 نسخ الهامش + إضافة للمراجع النهائية
+              </button>
               <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إغلاق</button>
             </div>
           </div>
