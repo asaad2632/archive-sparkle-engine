@@ -287,12 +287,24 @@ export default function App() {
   const [page, setPage] = useState("home");
   const [aiModel, setAiModel] = useState(getSelectedModel());
   const BASE_DOC_IDS = React.useMemo(() => new Set(DOCS_FROM_INDEX.map(d => d.id)), []);
+  const [deletedBaseDocs, setDeletedBaseDocs] = useState(() => {
+    try {
+      const v = localStorage.getItem("acadarchiv_deleted_base_docs");
+      return new Set(v && v !== "undefined" ? JSON.parse(v) : []);
+    } catch { return new Set(); }
+  });
   const [docs, setDocs] = useState(() => {
+    let deleted = new Set();
+    try {
+      const dv = localStorage.getItem("acadarchiv_deleted_base_docs");
+      deleted = new Set(dv && dv !== "undefined" ? JSON.parse(dv) : []);
+    } catch {}
+    let userDocs = [];
     try {
       const v = localStorage.getItem("acadarchiv_user_docs");
-      const userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
-      return [...userDocs, ...DOCS_FROM_INDEX];
-    } catch { return DOCS_FROM_INDEX; }
+      userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
+    } catch {}
+    return [...userDocs, ...DOCS_FROM_INDEX.filter(d => !deleted.has(d.id))];
   });
   React.useEffect(() => {
     try {
@@ -300,11 +312,44 @@ export default function App() {
       localStorage.setItem("acadarchiv_user_docs", JSON.stringify(userDocs));
     } catch {}
   }, [docs, BASE_DOC_IDS]);
-  const deleteUserDoc = (id) => {
-    setDocs(prev => prev.filter(d => d.id !== id));
+  React.useEffect(() => {
+    try { localStorage.setItem("acadarchiv_deleted_base_docs", JSON.stringify([...deletedBaseDocs])); } catch {}
+  }, [deletedBaseDocs]);
+
+  // Unified delete: handles base docs, user-added docs, and library items.
+  // Also cascades to bibliography and clears selection.
+  const handleDeleteSource = (id) => {
+    if (id == null) return;
+    const isLibId = typeof id === "string" && id.startsWith("lib-");
+    if (isLibId) {
+      const realId = id.slice(4);
+      const libIdNum = Number(realId);
+      saveLibrary(library.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      if (libSelected && (String(libSelected.id) === realId || libSelected.id === libIdNum)) setLibSelected(null);
+    } else if (BASE_DOC_IDS.has(id)) {
+      setDeletedBaseDocs(prev => { const n = new Set(prev); n.add(id); return n; });
+      setDocs(prev => prev.filter(d => d.id !== id));
+    } else {
+      // user-added doc (also catches library items mistakenly passed by raw id)
+      setDocs(prev => prev.filter(d => d.id !== id));
+      const libMatch = library.find(s => s.id === id || String(s.id) === String(id));
+      if (libMatch) {
+        saveLibrary(library.filter(s => s.id !== libMatch.id));
+        if (libSelected?.id === libMatch.id) setLibSelected(null);
+      }
+    }
     if (selectedDoc?.id === id) setSelectedDoc(null);
+    // cascade to bibliography
+    saveBibliography(prev => prev.filter(b => b.docId !== id && b.id !== id));
     showNotif("🗑️ تم حذف المصدر");
   };
+  const deleteUserDoc = handleDeleteSource;
+
+  const askDeleteSource = (id) => setConfirmDialog({
+    title: "تأكيد الحذف",
+    message: "هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",
+    onConfirm: () => handleDeleteSource(id),
+  });
   const [searchFilters, setSearchFilters] = useState({ query:"", chapterId:"", priority:"", isNew:"", status:"" });
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [aiResult, setAiResult] = useState("");
