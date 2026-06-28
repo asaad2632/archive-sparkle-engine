@@ -2479,6 +2479,32 @@ ${docsContext}
               </div>
             </div>
           </div>
+
+          {/* ===== Added Sources List with Delete ===== */}
+          {(() => {
+            const userAdded = docs.filter(d => !BASE_DOC_IDS.has(d.id));
+            if (userAdded.length === 0) return null;
+            return (
+              <div style={{background:"white",borderRadius:12,padding:20,border:"0.5px solid #e2e8f0",marginTop:16}}>
+                <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:12}}>📋 المصادر المُضافة ({userAdded.length})</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {userAdded.map(d => (
+                    <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:"0.5px solid #e2e8f0",background:"#f8fafc"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</div>
+                        <div style={{fontSize:11,color:"#64748b"}}>
+                          <span style={{background:"#e0f2fe",color:"#0369a1",padding:"1px 6px",borderRadius:4,marginInlineEnd:6}}>{d.category || d.sourceType || "مصدر"}</span>
+                          {d.author && <span>{d.author}</span>}{d.year && <span> • {d.year}</span>}
+                        </div>
+                      </div>
+                      <button onClick={()=>setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",onConfirm:()=>deleteUserDoc(d.id)})} title="حذف" style={{padding:"6px 10px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          </div>
           );
         })()}
 
