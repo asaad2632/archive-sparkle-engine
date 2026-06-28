@@ -1,24 +1,20 @@
-// AI model configuration. The app proxies all calls through /api/ai-chat,
-// which uses the Lovable AI Gateway server-side. No client keys are needed.
+// AI model configuration. The app proxies all calls through /api/ai-chat.
+// Two providers only: Lovable Cloud (Gemini via Lovable AI Gateway) and Groq.
 
 export const AI_MODELS = [
-  { id: "google/gemini-3-flash-preview", label: "Gemini 3 Flash (Lovable AI)" },
-  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash (Lovable AI)" },
-  { id: "google/gemini-2.5-pro", label: "Gemini 2.5 Pro (Lovable AI)" },
-  { id: "openai/gpt-5-mini", label: "GPT-5 Mini (Lovable AI)" },
-  { id: "openai/gpt-5", label: "GPT-5 (Lovable AI)" },
-  { id: "deepseek/deepseek-chat", label: "DeepSeek Chat (مفتاحك الخاص)" },
-  { id: "deepseek/deepseek-reasoner", label: "DeepSeek Reasoner (مفتاحك الخاص)" },
+  { id: "groq/llama-3.3-70b-versatile", label: "Groq — Llama 3.3 70B (مفتاحك الخاص)" },
+  { id: "google/gemini-3-flash-preview", label: "Lovable Cloud — Gemini 3 Flash" },
 ];
 
 export const MODEL_STORAGE_KEY = "acadarchiv_ai_model";
+export const DEFAULT_MODEL = "groq/llama-3.3-70b-versatile";
 
 export function getSelectedModel() {
   try {
     const v = localStorage.getItem(MODEL_STORAGE_KEY);
     if (v && AI_MODELS.some(m => m.id === v)) return v;
   } catch {}
-  return "google/gemini-3-flash-preview";
+  return DEFAULT_MODEL;
 }
 
 export function setSelectedModel(id) {
