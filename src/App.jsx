@@ -2295,7 +2295,7 @@ ${docsContext}
                 <p style={{color:"#64748b",fontSize:12}}>ارفع مصادرك (PDF، MD، TXT) أو أضف رابطاً — سيحللها الذكاء الاصطناعي ويصنفها لفصول أطروحتك تلقائياً</p>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <input ref={libFileRef} type="file" accept=".pdf,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
+                <input ref={libFileRef} type="file" accept=".pdf,.docx,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
                 <button onClick={()=>libFileRef.current?.click()} disabled={libUploading} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
                   {libUploading?"⏳ جاري الرفع...":"📁 رفع ملفات"}
                 </button>
