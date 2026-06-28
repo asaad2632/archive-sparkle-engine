@@ -315,15 +315,19 @@ export default function App() {
   };
 
   // نسخ + تسجيل في المراجع النهائية بضغطة واحدة (يجبر إدخال رقم الصفحة أولاً)
-  const copyFootnoteAndRegister = () => {
+  const copyFootnoteAndRegister = async () => {
     if (!footnoteModal) return;
     if (!validatePageNumber()) return;
     const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
-    navigator.clipboard.writeText(result).then(() => {
-      addToBibliography(footnoteModal, result);
+    addToBibliography(footnoteModal, result);
+    setFootnoteModal(null);
+    setPage("bibliography");
+    try {
+      await navigator.clipboard.writeText(result);
       showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
-      setFootnoteModal(null);
-    });
+    } catch {
+      showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
+    }
   };
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
@@ -340,26 +344,25 @@ export default function App() {
     });
   };
 
-  // تحويل اسم المؤلف: "أسعد حامد كنعان" → "كنعان، أسعد حامد"
+  // تحويل اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
   const formatAuthorLastFirst = (fullName) => {
     if (!fullName || fullName.trim() === "") return "[مؤلف غير معروف]";
     const parts = fullName.trim().split(/\s+/);
     if (parts.length === 1) return fullName;
     const last  = parts[parts.length - 1];
     const rest  = parts.slice(0, parts.length - 1).join(" ");
-    return `${last}، ${rest}`;
+    return `${last}, ${rest}`;
   };
 
   // تحديد قسم المصدر في القائمة النهائية
   const getBibSection = (cat) => {
-    if (!cat) return "أخرى";
-    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") return "الوثائق الأرشيفية";
-    if (cat === "كتاب")          return "الكتب";
-    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") return "الرسائل والأطاريح";
-    if (cat === "صحيفة")         return "الصحف";
-    if (cat === "مقالة")         return "المقالات";
-    if (cat === "تقرير" || cat === "بحث") return "التقارير والبحوث";
-    return "أخرى";
+    const normalized = (cat || "").trim();
+    if (["مصدر أولي", "وثيقة أرشيفية", "وثائق أرشيفية", "archival", "archive"].includes(normalized)) return "Archival Documents";
+    if (["كتاب", "كتب", "book", "books"].includes(normalized)) return "Books";
+    if (["رسالة علمية", "أطروحة دكتوراه", "رسالة ماجستير", "thesis", "dissertation"].includes(normalized)) return "Theses and Dissertations";
+    if (["صحيفة", "صحف", "جريدة", "newspaper", "newspapers"].includes(normalized)) return "Newspapers";
+    if (["موقع إلكتروني", "رابط", "url", "website", "websites"].includes(normalized)) return "Websites";
+    return "Articles and Research";
   };
 
   const addToBibliography = (doc, footnoteText) => {
@@ -409,7 +412,7 @@ export default function App() {
       year,
       category:  cat,
       bibEntry,
-      sortKey:   authorFormatted || title,
+      sortKey:   author ? authorFormatted : title,
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
@@ -423,20 +426,19 @@ export default function App() {
 
   // ترتيب المراجع: أقسام ثم أبجدي
   const BIBO_SECTIONS_ORDER = [
-    "الوثائق الأرشيفية",
-    "الكتب",
-    "الرسائل والأطاريح",
-    "الصحف",
-    "المقالات",
-    "التقارير والبحوث",
-    "أخرى",
+    "Archival Documents",
+    "Books",
+    "Theses and Dissertations",
+    "Articles and Research",
+    "Newspapers",
+    "Websites",
   ];
 
   const getBibGrouped = () => {
     const grouped = {};
     BIBO_SECTIONS_ORDER.forEach(s => { grouped[s] = []; });
     bibliography.forEach(b => {
-      const sec = grouped[b.section] ? b.section : "أخرى";
+      const sec = grouped[b.section] ? b.section : getBibSection(b.category);
       grouped[sec].push(b);
     });
     BIBO_SECTIONS_ORDER.forEach(s => {
@@ -1525,22 +1527,12 @@ ${docsContext}
           <div style={{background:"white",borderRadius:16,padding:24,maxWidth:560,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
             {/* رأس النافذة */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 توليد هامش المتن</div>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 Export Footnote</div>
               <button onClick={()=>setFootnoteModal(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
-            </div>
-            {/* معلومات المصدر */}
-            <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginBottom:14,border:"0.5px solid #e2e8f0"}}>
-              <div style={{fontSize:12,color:"#64748b",marginBottom:3}}>المصدر المختار:</div>
-              <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{footnoteModal.title}</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
-                {footnoteModal.author && <span>👤 {footnoteModal.author}</span>}
-                {footnoteModal.year   && <span>📅 {footnoteModal.year}</span>}
-                <span style={{background:"#eff6ff",color:"#3B82F6",borderRadius:4,padding:"1px 6px"}}>{footnoteModal.category || footnoteModal.sourceType || "مصدر أولي"}</span>
-              </div>
             </div>
             {/* حقل رقم الصفحة */}
             <div style={{marginBottom:14}}>
-              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>رقم الصفحة المراد توثيقها *</label>
+              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>Page Number / رقم الصفحة *</label>
               <input
                 ref={footnotePageRef}
                 type="text"
@@ -1548,35 +1540,21 @@ ${docsContext}
                 value={footnotePageNum}
                 onChange={e=>{ setFootnotePageNum(e.target.value); setFootnoteResult(""); }}
                 onKeyDown={e=>{ if(e.key==="Enter") copyFootnoteAndRegister(); }}
-                placeholder="مطلوب — مثال: 45 أو 45-47"
+                aria-label="Page Number"
+                placeholder="45 أو 45-47"
                 style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${footnotePageNum.trim()?"#86efac":"#fca5a5"}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
               />
               {!footnotePageNum.trim() && (
                 <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل أي عملية</div>
               )}
             </div>
-            <button
-              onClick={handleGenerateFootnote}
-              disabled={!footnotePageNum.trim()}
-              style={{width:"100%",padding:"9px",borderRadius:8,background:footnotePageNum.trim()?"#3B82F6":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
-              معاينة الهامش
-            </button>
-            {/* نتيجة الهامش */}
-            {footnoteResult && (
-              <div style={{marginBottom:14}}>
-                <div style={{fontSize:11,color:"#64748b",marginBottom:6,fontWeight:500}}>الهامش المُولَّد:</div>
-                <div style={{background:"#f0fdf4",borderRadius:8,padding:12,border:"1px solid #86efac",fontSize:13,lineHeight:1.9,color:"#1e293b",direction:"rtl"}}>
-                  {footnoteResult}
-                </div>
-              </div>
-            )}
             {/* الإجراء الرئيسي: نسخ + تسجيل بضغطة واحدة */}
             <div style={{display:"flex",gap:8}}>
               <button
                 onClick={copyFootnoteAndRegister}
                 disabled={!footnotePageNum.trim()}
                 style={{flex:1,padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
-                📋 نسخ الهامش + إضافة للمراجع النهائية
+                📋 Copy Footnote / نسخ الهامش
               </button>
               <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إغلاق</button>
             </div>
