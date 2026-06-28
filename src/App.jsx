@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
-import { callLLM } from "./aiClient";
+import { callLLM, analyzeDocumentLLM } from "./aiClient";
+import mammoth from "mammoth";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
