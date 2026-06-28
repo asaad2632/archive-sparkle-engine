@@ -2,14 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 
 type ChatMsg = { role: "user" | "assistant" | "system"; content: unknown };
 
-function toOpenAIMessages(messages: ChatMsg[], system?: string) {
-  const msgs: { role: string; content: string }[] = [];
+function toOpenAIMessages(messages: ChatMsg[], system?: string, allowMultimodal = false) {
+  const msgs: { role: string; content: unknown }[] = [];
   if (system) msgs.push({ role: "system", content: system });
   for (const m of messages || []) {
-    msgs.push({
-      role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-    });
+    const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
+    let content: unknown;
+    if (typeof m.content === "string") content = m.content;
+    else if (allowMultimodal && Array.isArray(m.content)) content = m.content;
+    else content = JSON.stringify(m.content);
+    msgs.push({ role, content });
   }
   return msgs;
 }
@@ -24,9 +26,17 @@ export const Route = createFileRoute("/api/ai-chat")({
             messages?: ChatMsg[];
             max_tokens?: number;
             model?: string;
+            forceProvider?: "lovable" | "groq";
           };
-          const model = body.model || "groq/llama-3.3-70b-versatile";
-          const isGroq = model.startsWith("groq/");
+          const requestedModel = body.model || "groq/llama-3.3-70b-versatile";
+          const isGroq = body.forceProvider === "lovable"
+            ? false
+            : body.forceProvider === "groq"
+              ? true
+              : requestedModel.startsWith("groq/");
+          const model = body.forceProvider === "lovable" && requestedModel.startsWith("groq/")
+            ? "google/gemini-2.5-flash"
+            : requestedModel;
 
           let endpoint: string;
           let headers: Record<string, string>;
@@ -68,7 +78,7 @@ export const Route = createFileRoute("/api/ai-chat")({
             headers,
             body: JSON.stringify({
               model: sendModel,
-              messages: toOpenAIMessages(body.messages || [], body.system),
+              messages: toOpenAIMessages(body.messages || [], body.system, !isGroq),
               max_tokens: body.max_tokens ?? 1024,
             }),
           });

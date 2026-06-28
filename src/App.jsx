@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
-import { callLLM } from "./aiClient";
+import { callLLM, analyzeDocumentLLM } from "./aiClient";
+import mammoth from "mammoth";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
@@ -460,70 +461,126 @@ export default function App() {
     try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
   };
 
-  const analyzeSource = async (src, fileText) => {
+  const analyzeSource = async (src, payload) => {
+    // payload: { text } for md/txt/docx, or { base64, mimeType } for pdf
     setLibAnalyzing(src.id);
     const prompt = `أنت مساعد بحثي متخصص في تاريخ "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
 
-حلّل هذا المصدر وصنّفه للأطروحة التي تتكون من أربعة فصول:
-- الفصل الأول: أوضاع الخليج عشية الحرب (1918-1939)
-- الفصل الثاني: الأهمية الاستراتيجية والعسكرية
-- الفصل الثالث: أثر الحرب على الأوضاع السياسية
-- الفصل الرابع: التحولات الاقتصادية في الخليج
+حلّل هذا المصدر (الملف مرفق${payload?.base64 ? " كـ PDF — استخرج النص منه ولو كان ممسوحاً ضوئياً (OCR)" : ""}) وصنّفه للأطروحة التي تتكون من أربعة فصول:
+- الفصل 1: أوضاع الخليج عشية الحرب (1918-1939)
+- الفصل 2: الأهمية الاستراتيجية والعسكرية
+- الفصل 3: أثر الحرب على الأوضاع السياسية
+- الفصل 4: التحولات الاقتصادية في الخليج
 
 اسم الملف: ${src.fileName}
 نوع الملف: ${src.fileType}
-المحتوى (أول 3000 حرف):
-${fileText.substring(0, 3000)}
 
-أجب بـ JSON فقط بدون أي نص آخر:
+أجب بـ JSON فقط بدون أي نص آخر وبدون code fences:
 {
-  "title": "عنوان المصدر المستخلص",
+  "title": "عنوان المصدر المستخلص من المحتوى",
   "author": "المؤلف",
   "year": "السنة (رقم أو null)",
   "language": "عربي أو إنجليزي أو أخرى",
-  "sourceType": "كتاب أو رسالة علمية أو بحث أو مقالة أو صحيفة أو وثيقة أرشيفية أو تقرير أو أطروحة دكتوراه أو موقع إلكتروني",
+  "sourceType": "كتاب أو رسالة علمية أو بحث أو مقالة أو صحيفة أو وثيقة أرشيفية أو تقرير أو أطروحة دكتوراه",
   "chapterId": 1,
-  "chapterName": "اسم الفصل",
+  "chapterName": "اسم الفصل المناسب",
   "sections": ["م1: ...", "م2: ..."],
   "priority": "★★★ أو ★★ أو ★",
-  "importantPages": "الصفحات المهمة مثل: 45-67، 102، 230-245",
-  "summary": "ملخص أكاديمي موجز (4-5 أسطر)",
-  "keywords": ["كلمة1", "كلمة2", "كلمة3"],
+  "importantPages": "صفحات مهمة مع أرقامها مثل: 45-67، 102، 230-245",
+  "summary": "ملخص أكاديمي موجز (4-5 أسطر) مستخلص من المحتوى الفعلي",
+  "keywords": ["كلمة1","كلمة2","كلمة3","كلمة4","كلمة5"],
   "whyImportant": "لماذا هذا المصدر مهم للأطروحة",
-  "howToUse": "كيف تستخدمه في الكتابة"
+  "howToUse": "كيف تستخدمه في الكتابة",
+  "keyPoints": [{"page":"12","point":"نقطة مهمة"},{"page":"45-47","point":"..."}]
 }`;
 
     try {
-      const data = await callLLM({
-          max_tokens: 1500,
-          messages: [{ role: "user", content: prompt }]
-        });
+      const data = await analyzeDocumentLLM({
+        prompt,
+        fileName: src.fileName,
+        mimeType: payload?.mimeType,
+        base64: payload?.base64,
+        text: payload?.text,
+        max_tokens: 2000,
+      });
       const text = data.content?.map(c => c.text || "").join("") || "{}";
       const clean = text.replace(/```json|```/g, "").trim();
-      const parsed = JSON.parse(clean);
+      // Extract first {...} block in case model adds prose
+      const match = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match ? match[0] : clean);
+      if (parsed && typeof parsed.chapterId === "string") parsed.chapterId = parseInt(parsed.chapterId) || null;
       return parsed;
-    } catch {
+    } catch (err) {
+      console.error("[analyzeSource]", err);
       return null;
     } finally {
       setLibAnalyzing(null);
     }
   };
 
+  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => {
+      const result = e.target.result || "";
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const readFileAsText = (file) => new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result || "");
+    r.onerror = reject;
+    r.readAsText(file, "utf-8");
+  });
+
+  const MAX_LIB_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+  // Functional update for library that persists to localStorage too
+  const updateLibrary = (updater) => {
+    setLibrary(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try { localStorage.setItem("acadarchiv_library", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
     setLibUploading(true);
     for (const file of Array.from(files)) {
-      const ext = file.name.split(".").pop().toLowerCase();
+      const ext = (file.name.split(".").pop() || "").toLowerCase();
       if (!["pdf","md","txt","docx"].includes(ext)) {
-        showNotif(`⚠️ الملف ${file.name} — يُقبل فقط PDF و MD و TXT`, "error");
+        showNotif(`⚠️ ${file.name} — يُقبل فقط PDF و DOCX و MD و TXT`, "error");
         continue;
       }
-      const reader = new FileReader();
-      const fileText = await new Promise(resolve => {
-        reader.onload = e => resolve(e.target.result);
-        if (ext === "pdf") reader.readAsDataURL(file);
-        else reader.readAsText(file, "utf-8");
-      });
+      if (file.size > MAX_LIB_FILE_SIZE) {
+        showNotif(`⚠️ ${file.name} يتجاوز الحد الأقصى 50MB`, "error");
+        continue;
+      }
+
+      // Extract content per type
+      let payload = null;
+      let storedText = null;
+      try {
+        if (ext === "pdf") {
+          const base64 = await readFileAsBase64(file);
+          payload = { base64, mimeType: "application/pdf" };
+        } else if (ext === "docx") {
+          const arrayBuffer = await file.arrayBuffer();
+          const { value } = await mammoth.extractRawText({ arrayBuffer });
+          storedText = value || "";
+          payload = { text: storedText };
+        } else {
+          storedText = await readFileAsText(file);
+          payload = { text: storedText };
+        }
+      } catch (err) {
+        console.error("[lib-upload-extract]", err);
+        showNotif(`⚠️ تعذّر قراءة ${file.name}`, "error");
+        continue;
+      }
 
       const srcId = Date.now() + Math.random();
       const newSrc = {
@@ -533,25 +590,21 @@ ${fileText.substring(0, 3000)}
         title:"", author:"", year:"", language:"", sourceType:"",
         chapterId: null, sections:[], priority:"★★",
         importantPages:"", summary:"", keywords:[], whyImportant:"", howToUse:"",
-        fileData: ext !== "pdf" ? fileText : null,
+        keyPoints: [],
+        fileData: storedText, // store text only; PDFs are too large for localStorage
       };
-      const withNew = [newSrc, ...library];
-      saveLibrary(withNew);
+      updateLibrary(prev => [newSrc, ...prev]);
 
-      // تحليل
-      let textForAnalysis = ext === "pdf" ? `[ملف PDF: ${file.name}]` : fileText;
-      const analysis = await analyzeSource(newSrc, textForAnalysis);
-      const analyzed = analysis
+      const analysis = await analyzeSource(newSrc, payload);
+      const analyzed = analysis && (analysis.title || analysis.summary || analysis.chapterId)
         ? { ...newSrc, ...analysis, analyzed: true, status: "تم التحليل ✅" }
         : { ...newSrc, analyzed: false, status: "فشل التحليل ⚠️ — عدّل يدوياً" };
-      saveLibrary(prev => {
-        const _v = localStorage.getItem("acadarchiv_library"); const cur = _v && _v !== "undefined" ? JSON.parse(_v) : [];
-        return cur.map(s => s.id === srcId ? analyzed : s);
-      });
+      updateLibrary(prev => prev.map(s => s.id === srcId ? analyzed : s));
     }
     setLibUploading(false);
     showNotif("✅ اكتمل رفع وتحليل الملفات");
   };
+
 
   const handleLibUrlImport = async () => {
     if (!libUrlInput.trim()) return;
@@ -2242,7 +2295,7 @@ ${docsContext}
                 <p style={{color:"#64748b",fontSize:12}}>ارفع مصادرك (PDF، MD، TXT) أو أضف رابطاً — سيحللها الذكاء الاصطناعي ويصنفها لفصول أطروحتك تلقائياً</p>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <input ref={libFileRef} type="file" accept=".pdf,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
+                <input ref={libFileRef} type="file" accept=".pdf,.docx,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
                 <button onClick={()=>libFileRef.current?.click()} disabled={libUploading} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
                   {libUploading?"⏳ جاري الرفع...":"📁 رفع ملفات"}
                 </button>
@@ -2253,7 +2306,7 @@ ${docsContext}
             <div style={{background:"white",borderRadius:12,padding:16,border:"2px dashed #bfdbfe",marginBottom:14,textAlign:"center",cursor:"pointer"}} onClick={()=>libFileRef.current?.click()} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#3B82F6"}} onDragLeave={e=>e.currentTarget.style.borderColor="#bfdbfe"} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#bfdbfe";handleLibFileUpload(e.dataTransfer.files);}}>
               <div style={{fontSize:36,marginBottom:6}}>📂</div>
               <div style={{fontWeight:600,color:"#3B82F6",marginBottom:4}}>اسحب وأسقط ملفاتك هنا أو اضغط للاختيار</div>
-              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF • Markdown (MD) • نص عادي (TXT) — حجم أقصى 10MB للملف الواحد</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR للممسوح ضوئياً) • DOCX • Markdown (MD) • نص عادي (TXT) — حجم أقصى 50MB للملف الواحد</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>يمكن رفع عدة ملفات دفعة واحدة — كتب، رسائل، بحوث، مقالات، صحف، وثائق...</div>
             </div>
 
