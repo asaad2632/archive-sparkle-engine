@@ -296,17 +296,31 @@ export default function App() {
     setTimeout(() => footnotePageRef.current?.focus(), 100);
   };
 
+  // التحقق من رقم الصفحة قبل أي معالجة
+  const validatePageNumber = () => {
+    const p = (footnotePageNum || "").trim();
+    if (!p) {
+      showNotif("⚠️ رقم الصفحة مطلوب قبل توليد الهامش أو إضافة المرجع", "error");
+      setTimeout(() => footnotePageRef.current?.focus(), 50);
+      return false;
+    }
+    return true;
+  };
+
   const handleGenerateFootnote = () => {
     if (!footnoteModal) return;
-    const result = generateFootnote(footnoteModal, footnotePageNum);
+    if (!validatePageNumber()) return;
+    const result = generateFootnote(footnoteModal, footnotePageNum.trim());
     setFootnoteResult(result);
   };
 
+  // نسخ + تسجيل في المراجع النهائية بضغطة واحدة (يجبر إدخال رقم الصفحة أولاً)
   const copyFootnoteAndRegister = () => {
-    if (!footnoteResult) return;
-    navigator.clipboard.writeText(footnoteResult).then(() => {
-      // إرسال نسخة للقائمة النهائية تلقائياً
-      addToBibliography(footnoteModal, footnoteResult);
+    if (!footnoteModal) return;
+    if (!validatePageNumber()) return;
+    const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
+    navigator.clipboard.writeText(result).then(() => {
+      addToBibliography(footnoteModal, result);
       showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
       setFootnoteModal(null);
     });
@@ -317,9 +331,13 @@ export default function App() {
     try { const v = localStorage.getItem("acadarchiv_bibliography"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
   });
 
-  const saveBibliography = (updated) => {
-    setBibliography(updated);
-    try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(updated)); } catch {}
+  // يقبل مصفوفة أو دالة محدِّث (للتحديث الذري وتجنّب الحالة القديمة)
+  const saveBibliography = (updater) => {
+    setBibliography(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   // تحويل اسم المؤلف: "أسعد حامد كنعان" → "كنعان، أسعد حامد"
@@ -395,11 +413,12 @@ export default function App() {
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
-    // منع التكرار
-    const exists = bibliography.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
-    if (exists) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return; }
-
-    saveBibliography([...bibliography, newEntry]);
+    // منع التكرار + تحديث ذري + فرز تفاعلي تلقائي
+    saveBibliography(prev => {
+      const dup = prev.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
+      if (dup) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return prev; }
+      return [...prev, newEntry];
+    });
   };
 
   // ترتيب المراجع: أقسام ثم أبجدي
@@ -440,7 +459,7 @@ export default function App() {
   };
 
   const removeFromBibliography = (id) => {
-    saveBibliography(bibliography.filter(b => b.id !== id));
+    saveBibliography(prev => prev.filter(b => b.id !== id));
     showNotif("🗑️ تم حذف المرجع من القائمة");
   };
 
@@ -1525,15 +1544,22 @@ ${docsContext}
               <input
                 ref={footnotePageRef}
                 type="text"
+                required
                 value={footnotePageNum}
                 onChange={e=>{ setFootnotePageNum(e.target.value); setFootnoteResult(""); }}
-                onKeyDown={e=>{ if(e.key==="Enter") handleGenerateFootnote(); }}
-                placeholder="مثال: 45 أو 45-47"
-                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+                onKeyDown={e=>{ if(e.key==="Enter") copyFootnoteAndRegister(); }}
+                placeholder="مطلوب — مثال: 45 أو 45-47"
+                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${footnotePageNum.trim()?"#86efac":"#fca5a5"}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
               />
+              {!footnotePageNum.trim() && (
+                <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل أي عملية</div>
+              )}
             </div>
-            <button onClick={handleGenerateFootnote} style={{width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
-              توليد الهامش
+            <button
+              onClick={handleGenerateFootnote}
+              disabled={!footnotePageNum.trim()}
+              style={{width:"100%",padding:"9px",borderRadius:8,background:footnotePageNum.trim()?"#3B82F6":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
+              معاينة الهامش
             </button>
             {/* نتيجة الهامش */}
             {footnoteResult && (
@@ -1544,13 +1570,14 @@ ${docsContext}
                 </div>
               </div>
             )}
-            {/* أزرار النسخ والإغلاق */}
+            {/* الإجراء الرئيسي: نسخ + تسجيل بضغطة واحدة */}
             <div style={{display:"flex",gap:8}}>
-              {footnoteResult && (
-                <button onClick={copyFootnoteAndRegister} style={{flex:1,padding:"9px",borderRadius:8,background:"#10B981",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
-                  📋 نسخ الهامش + إضافة للمراجع النهائية
-                </button>
-              )}
+              <button
+                onClick={copyFootnoteAndRegister}
+                disabled={!footnotePageNum.trim()}
+                style={{flex:1,padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
+                📋 نسخ الهامش + إضافة للمراجع النهائية
+              </button>
               <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إغلاق</button>
             </div>
           </div>
