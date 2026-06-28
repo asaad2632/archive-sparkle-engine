@@ -143,17 +143,145 @@ const DOCS_FROM_INDEX = [
 ];
 
 const COUNTRIES = ["السعودية","الكويت","البحرين","قطر","الإمارات/الساحل المتصالح","عُمان","بريطانيا","الولايات المتحدة","ألمانيا"];
-const CATEGORIES = ["مصدر أولي","كتاب","رسالة علمية","بحث","صحيفة","مقالة","تقرير"];
+
+// ============= UNIVERSAL SOURCE-TYPE SCHEMA =============
+// كل تبويب في التطبيق يقرأ من هنا. تعديل واحد ينعكس على كل التبويبات.
+const SOURCE_TYPES = [
+  "كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه",
+  "بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة",
+  "موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي",
+  // legacy aliases (kept so old saved data keeps working)
+  "كتاب","رسالة علمية","بحث","مقالة","تقرير"
+];
+const CATEGORIES = SOURCE_TYPES;
+
+// أقسام قائمة المراجع النهائية (الترتيب مُلزِم)
+const BIB_SECTIONS_ORDER = [
+  "الوثائق الأرشيفية والمصادر الأولية",
+  "الكتب العربية والأجنبية",
+  "الرسائل والأطاريح",
+  "البحوث والمجلات العلمية",
+  "المؤتمرات العلمية",
+  "الصحف",
+  "المواقع الإلكترونية والموسوعات",
+];
+
+function getBibSectionForType(cat) {
+  const c = (cat || "").trim();
+  if (["مصدر أولي","وثيقة أرشيفية","وثائق أرشيفية","تقرير رسمي","تقرير","archival","archive"].includes(c)) return "الوثائق الأرشيفية والمصادر الأولية";
+  if (["كتاب","كتاب عربي","كتاب أجنبي","book","books"].includes(c)) return "الكتب العربية والأجنبية";
+  if (["رسالة ماجستير","أطروحة دكتوراه","رسالة علمية","thesis","dissertation"].includes(c)) return "الرسائل والأطاريح";
+  if (["بحث","بحث علمي","مجلة علمية","مقالة","article","journal"].includes(c)) return "البحوث والمجلات العلمية";
+  if (["مؤتمر علمي","مؤتمر","conference","proceedings"].includes(c)) return "المؤتمرات العلمية";
+  if (["صحيفة","صحف","جريدة","newspaper","newspapers"].includes(c)) return "الصحف";
+  if (["موقع إلكتروني","رابط","website","موسوعة","encyclopedia","url"].includes(c)) return "المواقع الإلكترونية والموسوعات";
+  return "الوثائق الأرشيفية والمصادر الأولية";
+}
+
+// نسّق اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
+function formatAuthorLastFirstUtil(fullName) {
+  if (!fullName || !fullName.trim()) return "[مؤلف غير معروف]";
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) return fullName.trim();
+  const last = parts[parts.length - 1];
+  const rest = parts.slice(0, -1).join(" ");
+  return `${last}, ${rest}`;
+}
+
+// مولّد الاستشهاد الأكاديمي العربي حسب نوع المصدر.
+// withPage=true → هامش (فيه ص##)؛ withPage=false → دخل ببليوغرافيا (بدون رقم صفحة، مؤلف Last,First).
+function buildArabicCitation(doc, pageNum = "", withPage = true) {
+  const cat = doc.category || doc.sourceType || doc.type || "وثيقة أرشيفية";
+  const rawAuthor = doc.author || "";
+  const author = withPage
+    ? (rawAuthor || "[اسم المؤلف]")
+    : formatAuthorLastFirstUtil(rawAuthor);
+  const title = doc.title || "[العنوان]";
+  const year  = doc.year  || doc.date || "د.ت";
+  const page  = pageNum    || "[رقم الصفحة]";
+  const pageSuffix = withPage ? `، ص${page}` : "";
+
+  // كتاب (عربي / أجنبي / مطلق)
+  if (cat === "كتاب" || cat === "كتاب عربي" || cat === "كتاب أجنبي") {
+    const edition   = doc.edition   || "1";
+    const place     = doc.place     || "[مكان النشر]";
+    const publisher = doc.publisher || "[دار النشر]";
+    return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})${pageSuffix}.`;
+  }
+  // رسالة / أطروحة
+  if (cat === "رسالة ماجستير" || cat === "أطروحة دكتوراه" || cat === "رسالة علمية") {
+    const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
+    const college = doc.college    || "[الكلية]";
+    const univ    = doc.university || "[الجامعة]";
+    return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}${pageSuffix}.`;
+  }
+  // بحث / مجلة
+  if (cat === "بحث" || cat === "بحث علمي" || cat === "مجلة علمية" || cat === "مقالة") {
+    const journal = doc.journal || doc.journalName || "[اسم المجلة]";
+    const vol     = doc.volume  || "[م]";
+    const iss     = doc.issue   || "[ع]";
+    return `${author}، "${title}"، ${journal}، م${vol}، ع${iss}، (${year})${pageSuffix}.`;
+  }
+  // مؤتمر علمي
+  if (cat === "مؤتمر علمي" || cat === "مؤتمر") {
+    const conf  = doc.conference || doc.conferenceName || "[اسم المؤتمر]";
+    const place = doc.place || "[المكان]";
+    return `${author}، "${title}"، وقائع ${conf}، ${place}، ${year}${pageSuffix}.`;
+  }
+  // صحيفة
+  if (cat === "صحيفة") {
+    const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
+    const issue     = doc.issue     || "[رقم العدد]";
+    const date      = doc.date      || year;
+    return `صحيفة ${newspaper}، العدد (${issue})، ${date}${pageSuffix}.`;
+  }
+  // موقع إلكتروني
+  if (cat === "موقع إلكتروني" || cat === "رابط") {
+    const url        = doc.url || doc.link || "[الرابط]";
+    const visitDate  = doc.visitDate || doc.accessDate || "[تاريخ الزيارة]";
+    return `${author}، ${title}، متاح على: ${url}، تاريخ الزيارة: ${visitDate}${pageSuffix}.`;
+  }
+  // موسوعة
+  if (cat === "موسوعة") {
+    const vol     = doc.volume    || "[م]";
+    const edition = doc.edition   || "[الطبعة]";
+    const pub     = doc.publisher || "[الناشر]";
+    return `${title}، م${vol}، ط${edition}، (${pub}، ${year})${pageSuffix}.`;
+  }
+  // وثيقة أرشيفية / مصدر أولي / تقرير رسمي
+  if (cat === "وثيقة أرشيفية" || cat === "مصدر أولي" || cat === "تقرير رسمي" || cat === "تقرير") {
+    const ref = doc.archiveRef || doc.archiveNumber || "[الرقم الأرشيفي]";
+    return `${title}، ${ref}، ${year}${pageSuffix}.`;
+  }
+  return `${author}، ${title}، (${year})${pageSuffix}.`;
+}
+
+// كشف نوع المصدر من رابط URL (للاستيراد التلقائي).
+function detectSourceTypeFromUrl(url = "") {
+  const u = url.toLowerCase();
+  if (/qdl\.qa|nationalarchives|ior\//.test(u)) return "وثيقة أرشيفية";
+  if (/jstor|sciencedirect|springer|tandfonline|doi\.org|researchgate/.test(u)) return "بحث علمي";
+  if (/wikipedia|britannica|encyclopedia|maarefa|marefa/.test(u)) return "موسوعة";
+  if (/aljazeera|bbc|reuters|nytimes|theguardian|alarabiya|alhayat|asharqalawsat|newspaper|news\./.test(u)) return "صحيفة";
+  if (/google\.com\/books|books\.google|archive\.org\/details/.test(u)) return "كتاب";
+  if (/thesis|dissertation|shamaa|dar\.bibalex/.test(u)) return "رسالة ماجستير";
+  return "موقع إلكتروني";
+}
 
 function genRef(doc, fmt) {
-  const a = doc.author || "مصدر أولي";
-  const y = doc.year || "د.ت";
-  const t = doc.title;
-  const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
-  if (fmt==="APA") return `${a} (${y}). ${t}.${r}`;
-  if (fmt==="Chicago") return `${a}. "${t}."${r} ${y}.`;
-  return `${a}. "${t}."${r} ${y}.`;
+  // الصيغ الأكاديمية الأجنبية (للاستخدام الإنجليزي)
+  if (fmt === "APA" || fmt === "Chicago" || fmt === "MLA") {
+    const a = doc.author || "مصدر أولي";
+    const y = doc.year   || "د.ت";
+    const t = doc.title;
+    const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
+    if (fmt === "APA") return `${a} (${y}). ${t}.${r}`;
+    return `${a}. "${t}."${r} ${y}.`;
+  }
+  // افتراضياً: الاستشهاد العربي حسب نوع المصدر (بدون رقم صفحة)
+  return buildArabicCitation(doc, "", false);
 }
+
 
 export default function App() {
   const [page, setPage] = useState("home");
@@ -251,42 +379,7 @@ export default function App() {
   const footnotePageRef = useRef(null);
 
   const generateFootnote = (doc, pageNum) => {
-    const cat = doc.category || doc.sourceType || "وثيقة أرشيفية";
-    const author  = doc.author  || "[اسم المؤلف]";
-    const title   = doc.title   || "[العنوان]";
-    const year    = doc.year    || "[السنة]";
-    const page    = pageNum     || "[رقم الصفحة]";
-
-    if (cat === "كتاب") {
-      const edition   = doc.edition   || "1";
-      const place     = doc.place     || "[مكان النشر]";
-      const publisher = doc.publisher || "[دار النشر]";
-      return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})، ص${page}.`;
-    }
-    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
-      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
-      const college = doc.college    || "[الكلية]";
-      const univ    = doc.university || "[الجامعة]";
-      return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}، ص${page}.`;
-    }
-    if (cat === "صحيفة") {
-      const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
-      const issue     = doc.issue     || "[رقم العدد]";
-      const date      = doc.date      || year;
-      return `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}، ص${page}.`;
-    }
-    if (cat === "مقالة") {
-      const journal = doc.journal || "[اسم المجلة]";
-      const vol     = doc.volume  || "[م]";
-      const iss     = doc.issue   || "[ع]";
-      return `${author}، "${title}"، ${journal}، م${vol}، ع${iss} (${year})، ص${page}.`;
-    }
-    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
-      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
-      return `${title}، ${ref}، ${year}، ص${page}.`;
-    }
-    // افتراضي
-    return `${author}، ${title}، (${year})، ص${page}.`;
+    return buildArabicCitation(doc, pageNum, true);
   };
 
   const openFootnoteModal = (doc) => {
@@ -335,7 +428,7 @@ export default function App() {
     try { const v = localStorage.getItem("acadarchiv_bibliography"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
   });
 
-  // يقبل مصفوفة أو دالة محدِّث (للتحديث الذري وتجنّب الحالة القديمة)
+  // يقبل مصفوفة أو دالة محدِّث
   const saveBibliography = (updater) => {
     setBibliography(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -344,64 +437,20 @@ export default function App() {
     });
   };
 
-  // تحويل اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
-  const formatAuthorLastFirst = (fullName) => {
-    if (!fullName || fullName.trim() === "") return "[مؤلف غير معروف]";
-    const parts = fullName.trim().split(/\s+/);
-    if (parts.length === 1) return fullName;
-    const last  = parts[parts.length - 1];
-    const rest  = parts.slice(0, parts.length - 1).join(" ");
-    return `${last}, ${rest}`;
-  };
-
-  // تحديد قسم المصدر في القائمة النهائية
-  const getBibSection = (cat) => {
-    const normalized = (cat || "").trim();
-    if (["مصدر أولي", "وثيقة أرشيفية", "وثائق أرشيفية", "archival", "archive"].includes(normalized)) return "Archival Documents";
-    if (["كتاب", "كتب", "book", "books"].includes(normalized)) return "Books";
-    if (["رسالة علمية", "أطروحة دكتوراه", "رسالة ماجستير", "thesis", "dissertation"].includes(normalized)) return "Theses and Dissertations";
-    if (["صحيفة", "صحف", "جريدة", "newspaper", "newspapers"].includes(normalized)) return "Newspapers";
-    if (["موقع إلكتروني", "رابط", "url", "website", "websites"].includes(normalized)) return "Websites";
-    return "Articles and Research";
-  };
+  // aliases للحفاظ على التوافق الخلفي
+  const formatAuthorLastFirst = formatAuthorLastFirstUtil;
+  const getBibSection = getBibSectionForType;
 
   const addToBibliography = (doc, footnoteText) => {
     if (!doc) return;
     const cat     = doc.category || doc.sourceType || "وثيقة أرشيفية";
-    const section = getBibSection(cat);
+    const section = getBibSectionForType(cat);
     const author  = doc.author || "";
-    const authorFormatted = formatAuthorLastFirst(author);
+    const authorFormatted = formatAuthorLastFirstUtil(author);
     const year    = doc.year   || "د.ت";
     const title   = doc.title  || "";
-
-    // بناء نص المرجع بدون رقم الصفحة
-    let bibEntry = "";
-    if (cat === "كتاب") {
-      const edition   = doc.edition   || "1";
-      const place     = doc.place     || "[مكان النشر]";
-      const publisher = doc.publisher || "[دار النشر]";
-      bibEntry = `${authorFormatted}، ${title}، ط${edition}، (${place}: ${publisher}، ${year}).`;
-    } else if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
-      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
-      const college = doc.college    || "[الكلية]";
-      const univ    = doc.university || "[الجامعة]";
-      bibEntry = `${authorFormatted}، "${title}"، (${degree})، ${college}، ${univ}، ${year}.`;
-    } else if (cat === "صحيفة") {
-      const newspaper = doc.newspaper || title || "[اسم الصحيفة]";
-      const issue     = doc.issue     || "[رقم العدد]";
-      const date      = doc.date      || year;
-      bibEntry = `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}.`;
-    } else if (cat === "مقالة") {
-      const journal = doc.journal || "[اسم المجلة]";
-      const vol     = doc.volume  || "[م]";
-      const iss     = doc.issue   || "[ع]";
-      bibEntry = `${authorFormatted}، "${title}"، ${journal}، م${vol}، ع${iss} (${year}).`;
-    } else if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
-      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
-      bibEntry = `${title}، ${ref}، ${year}.`;
-    } else {
-      bibEntry = `${authorFormatted}، ${title}، (${year}).`;
-    }
+    // بناء نص المرجع بدون رقم الصفحة باستخدام البنّاء الموحَّد
+    const bibEntry = buildArabicCitation(doc, "", false);
 
     const newEntry = {
       id:        Date.now() + Math.random(),
@@ -416,7 +465,6 @@ export default function App() {
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
-    // منع التكرار + تحديث ذري + فرز تفاعلي تلقائي
     saveBibliography(prev => {
       const dup = prev.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
       if (dup) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return prev; }
@@ -424,15 +472,9 @@ export default function App() {
     });
   };
 
-  // ترتيب المراجع: أقسام ثم أبجدي
-  const BIBO_SECTIONS_ORDER = [
-    "Archival Documents",
-    "Books",
-    "Theses and Dissertations",
-    "Articles and Research",
-    "Newspapers",
-    "Websites",
-  ];
+  // ترتيب المراجع: أقسام عربية ثم أبجدي
+  const BIBO_SECTIONS_ORDER = BIB_SECTIONS_ORDER;
+
 
   const getBibGrouped = () => {
     const grouped = {};
@@ -743,39 +785,58 @@ export default function App() {
           tools:[{ type:"web_search_20250305", name:"web_search" }],
           messages:[{
             role:"user",
-            content:`اذهب إلى هذا الرابط وأخرج لي بيانات الوثيقة الأرشيفية المذكورة فيه بصيغة JSON فقط بدون أي شرح:
+            content:`اذهب إلى هذا الرابط واستخرج بيانات المصدر مهما كان نوعه (كتاب/رسالة/بحث/مجلة/مؤتمر/صحيفة/موقع/موسوعة/وثيقة أرشيفية/تقرير) بصيغة JSON فقط بدون أي شرح:
 رابط: ${urlImport}
 
 JSON المطلوب (أعده فقط بدون backticks):
 {
-  "title": "عنوان الوثيقة بالعربية",
+  "title": "العنوان بالعربية",
   "author": "المؤلف أو الجهة",
   "year": "السنة (رقم فقط أو null)",
-  "archiveRef": "رقم الأرشيف مثل IOR/R/15/...",
-  "category": "نوع الوثيقة",
-  "notes": "ملاحظة مختصرة عن محتواها",
-  "keywords": "كلمات مفتاحية مفيدة"
+  "archiveRef": "رقم الأرشيف إن وُجد",
+  "sourceType": "أحد القيم: كتاب عربي|كتاب أجنبي|رسالة ماجستير|أطروحة دكتوراه|بحث علمي|مجلة علمية|مؤتمر علمي|صحيفة|موقع إلكتروني|موسوعة|وثيقة أرشيفية|تقرير رسمي|مصدر أولي",
+  "publisher": "الناشر إن وُجد",
+  "place": "مكان النشر إن وُجد",
+  "edition": "الطبعة إن وُجدت",
+  "journal": "اسم المجلة إن كان بحث/مقالة",
+  "volume": "المجلد إن وُجد",
+  "issue": "العدد إن وُجد",
+  "university": "الجامعة إن كان رسالة",
+  "college": "الكلية إن كان رسالة",
+  "conference": "اسم المؤتمر إن وُجد",
+  "newspaper": "اسم الصحيفة إن كانت صحيفة",
+  "url": "${urlImport}",
+  "visitDate": "${new Date().toLocaleDateString("ar-IQ")}",
+  "notes": "ملاحظة مختصرة",
+  "keywords": "كلمات مفتاحية"
 }
-إذا كان الرابط لصفحة QDL أو أرشيف بريطاني، استخرج المعلومات منه.`
+اكتشف النوع تلقائياً من خصائص الصفحة (مجال، عناصر بيانات وصفية، إلخ).`
           }]
         });
       const text = data.content?.map(c=>c.text||"").join("") || "";
       try {
         const clean = text.replace(/```json|```/g,"").trim();
         const parsed = JSON.parse(clean);
+        // كشف نوع المصدر إذا لم يحدّده الذكاء الاصطناعي
+        const detectedType = parsed.sourceType || detectSourceTypeFromUrl(urlImport);
+        parsed.sourceType = detectedType;
+        parsed.category   = detectedType;
         setUrlResult(parsed);
         setAddForm(prev => ({
           ...prev,
+          ...parsed,
           title: parsed.title || "",
           author: parsed.author || "",
           year: parsed.year || "",
           archiveRef: parsed.archiveRef || "",
-          category: parsed.category || "مصدر أولي",
+          category: detectedType,
+          sourceType: detectedType,
           notes: parsed.notes || "",
           keywords: parsed.keywords || "",
         }));
         setPage("add");
-        showNotif("✅ تم استخراج بيانات الوثيقة — راجع النموذج وأكمل البيانات");
+        showNotif(`✅ تم استخراج بيانات المصدر (${detectedType}) — راجع النموذج وأكمل البيانات`);
+
       } catch {
         showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
       }
@@ -835,7 +896,10 @@ JSON المطلوب (أعده فقط بدون backticks):
       id: docs.length + 100 + Math.floor(Math.random()*100),
       chapterId: addForm.chapterId ? parseInt(addForm.chapterId) : null,
       year: addForm.year || null,
+      sourceType: addForm.sourceType || addForm.category || "وثيقة أرشيفية",
+      category:   addForm.category   || addForm.sourceType || "وثيقة أرشيفية",
     };
+
     setDocs(prev => [newDoc, ...prev]);
     setAddForm({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
     showNotif(`✅ تمت إضافة الوثيقة — الإجمالي: ${docs.length + 1}`);
@@ -1361,12 +1425,15 @@ ${textToTranslate.substring(0, 4000)}
 
   // تصنيف فئات المصادر للتنوع العلمي
   const DIVERSITY_CATEGORIES = [
-    { key: "archival",  label: "الوثائق الأرشيفية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية"] },
-    { key: "books",     label: "الكتب",              color: "#3B82F6", cats: ["كتاب"] },
-    { key: "theses",    label: "الرسائل والأطاريح",  color: "#10B981", cats: ["رسالة علمية","أطروحة دكتوراه"] },
-    { key: "journals",  label: "المجلات والصحف",     color: "#F59E0B", cats: ["مقالة","صحيفة","بحث"] },
-    { key: "reports",   label: "التقارير والمواقع",   color: "#EF4444", cats: ["تقرير","موقع إلكتروني"] },
+    { key: "archival",  label: "الوثائق والمصادر الأولية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية","تقرير رسمي","تقرير"] },
+    { key: "books",     label: "الكتب",                     color: "#3B82F6", cats: ["كتاب","كتاب عربي","كتاب أجنبي"] },
+    { key: "theses",    label: "الرسائل والأطاريح",         color: "#10B981", cats: ["رسالة علمية","رسالة ماجستير","أطروحة دكتوراه"] },
+    { key: "journals",  label: "البحوث والمجلات",            color: "#F59E0B", cats: ["مقالة","بحث","بحث علمي","مجلة علمية"] },
+    { key: "confs",     label: "المؤتمرات",                  color: "#06B6D4", cats: ["مؤتمر علمي","مؤتمر"] },
+    { key: "news",      label: "الصحف",                      color: "#EF4444", cats: ["صحيفة"] },
+    { key: "web",       label: "المواقع والموسوعات",         color: "#0EA5E9", cats: ["موقع إلكتروني","موسوعة"] },
   ];
+
 
   const calcDiversityForChapter = (chapterId) => {
     const chDocs = combinedDocs.filter(d => d.chapterId === chapterId);
@@ -1952,15 +2019,19 @@ ${docsContext}
             {/* ===== تصنيف المصادر الأكاديمية مع نسب الإنجاز لكل فئة ===== */}
             {(() => {
               const CATEGORIES = [
-                { key: "كتاب",            label: "📚 الكتب",                color: "#3B82F6", target: 40 },
-                { key: "رسالة علمية",     label: "🎓 الرسائل الجامعية",      color: "#8B5CF6", target: 15 },
-                { key: "أطروحة دكتوراه",  label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
-                { key: "بحث",             label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
-                { key: "مقالة",           label: "📰 المقالات والدوريات",    color: "#F59E0B", target: 20 },
-                { key: "صحيفة",           label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
-                { key: "وثيقة أرشيفية",   label: "🗂️ الوثائق الأرشيفية",     color: "#10B981", target: 25 },
-                { key: "تقرير",           label: "📑 التقارير",              color: "#64748b", target: 10 },
-              ];
+                { keys: ["كتاب","كتاب عربي","كتاب أجنبي"], label: "📚 الكتب",                color: "#3B82F6", target: 40 },
+                { keys: ["رسالة ماجستير","رسالة علمية"],   label: "🎓 رسائل الماجستير",       color: "#8B5CF6", target: 15 },
+                { keys: ["أطروحة دكتوراه"],                 label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
+                { keys: ["بحث","بحث علمي"],                 label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
+                { keys: ["مقالة","مجلة علمية"],             label: "📰 المجلات العلمية",       color: "#F59E0B", target: 20 },
+                { keys: ["مؤتمر علمي","مؤتمر"],             label: "🏛️ المؤتمرات",            color: "#06B6D4", target: 10 },
+                { keys: ["صحيفة"],                          label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
+                { keys: ["وثيقة أرشيفية","مصدر أولي"],     label: "🗂️ الوثائق والمصادر الأولية", color: "#10B981", target: 25 },
+                { keys: ["تقرير","تقرير رسمي"],             label: "📑 التقارير الرسمية",      color: "#64748b", target: 10 },
+                { keys: ["موقع إلكتروني"],                  label: "🌐 المواقع الإلكترونية",   color: "#0EA5E9", target: 10 },
+                { keys: ["موسوعة"],                         label: "📖 الموسوعات",             color: "#14B8A6", target: 5  },
+              ].map(c => ({ ...c, key: c.keys[0] }));
+
               const allSources = [...docs, ...library];
               const totalSources = allSources.length || 1;
               return (
@@ -1971,9 +2042,10 @@ ${docsContext}
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
                     {CATEGORIES.map(c => {
-                      const count = allSources.filter(s => (s.sourceType || s.category) === c.key).length;
+                      const count = allSources.filter(s => c.keys.includes(s.sourceType || s.category)).length;
                       const pct = Math.min(100, Math.round((count / c.target) * 100));
-                      const bibs = bibliography.filter(b => b.category === c.key).length;
+                      const bibs = bibliography.filter(b => c.keys.includes(b.category)).length;
+
                       return (
                         <div key={c.key} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${c.color}22`}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
@@ -2558,7 +2630,7 @@ ${docsContext}
                 </select>
                 <select value={libFilter.category} onChange={e=>setLibFilter(p=>({...p,category:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأنواع</option>
-                  {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
+                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <select value={libFilter.priority} onChange={e=>setLibFilter(p=>({...p,priority:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأولويات</option>
@@ -2690,7 +2762,7 @@ ${docsContext}
                                   <div>
                                     <label style={{fontSize:10,color:"#94a3b8",display:"block",marginBottom:3}}>نوع المصدر</label>
                                     <select value={src.sourceType||""} onChange={e=>updateLibSrc(src.id,{sourceType:e.target.value})} style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                                      {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
+                                      {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
                                   </div>
                                   <div style={{gridColumn:"1/-1"}}>
