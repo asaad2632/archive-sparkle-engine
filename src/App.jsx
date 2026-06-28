@@ -2016,15 +2016,19 @@ ${docsContext}
             {/* ===== تصنيف المصادر الأكاديمية مع نسب الإنجاز لكل فئة ===== */}
             {(() => {
               const CATEGORIES = [
-                { key: "كتاب",            label: "📚 الكتب",                color: "#3B82F6", target: 40 },
-                { key: "رسالة علمية",     label: "🎓 الرسائل الجامعية",      color: "#8B5CF6", target: 15 },
-                { key: "أطروحة دكتوراه",  label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
-                { key: "بحث",             label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
-                { key: "مقالة",           label: "📰 المقالات والدوريات",    color: "#F59E0B", target: 20 },
-                { key: "صحيفة",           label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
-                { key: "وثيقة أرشيفية",   label: "🗂️ الوثائق الأرشيفية",     color: "#10B981", target: 25 },
-                { key: "تقرير",           label: "📑 التقارير",              color: "#64748b", target: 10 },
-              ];
+                { keys: ["كتاب","كتاب عربي","كتاب أجنبي"], label: "📚 الكتب",                color: "#3B82F6", target: 40 },
+                { keys: ["رسالة ماجستير","رسالة علمية"],   label: "🎓 رسائل الماجستير",       color: "#8B5CF6", target: 15 },
+                { keys: ["أطروحة دكتوراه"],                 label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
+                { keys: ["بحث","بحث علمي"],                 label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
+                { keys: ["مقالة","مجلة علمية"],             label: "📰 المجلات العلمية",       color: "#F59E0B", target: 20 },
+                { keys: ["مؤتمر علمي","مؤتمر"],             label: "🏛️ المؤتمرات",            color: "#06B6D4", target: 10 },
+                { keys: ["صحيفة"],                          label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
+                { keys: ["وثيقة أرشيفية","مصدر أولي"],     label: "🗂️ الوثائق والمصادر الأولية", color: "#10B981", target: 25 },
+                { keys: ["تقرير","تقرير رسمي"],             label: "📑 التقارير الرسمية",      color: "#64748b", target: 10 },
+                { keys: ["موقع إلكتروني"],                  label: "🌐 المواقع الإلكترونية",   color: "#0EA5E9", target: 10 },
+                { keys: ["موسوعة"],                         label: "📖 الموسوعات",             color: "#14B8A6", target: 5  },
+              ].map(c => ({ ...c, key: c.keys[0] }));
+
               const allSources = [...docs, ...library];
               const totalSources = allSources.length || 1;
               return (
