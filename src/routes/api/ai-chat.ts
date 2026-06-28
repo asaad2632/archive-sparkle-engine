@@ -2,14 +2,16 @@ import { createFileRoute } from "@tanstack/react-router";
 
 type ChatMsg = { role: "user" | "assistant" | "system"; content: unknown };
 
-function toOpenAIMessages(messages: ChatMsg[], system?: string) {
-  const msgs: { role: string; content: string }[] = [];
+function toOpenAIMessages(messages: ChatMsg[], system?: string, allowMultimodal = false) {
+  const msgs: { role: string; content: unknown }[] = [];
   if (system) msgs.push({ role: "system", content: system });
   for (const m of messages || []) {
-    msgs.push({
-      role: m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user",
-      content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-    });
+    const role = m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user";
+    let content: unknown;
+    if (typeof m.content === "string") content = m.content;
+    else if (allowMultimodal && Array.isArray(m.content)) content = m.content;
+    else content = JSON.stringify(m.content);
+    msgs.push({ role, content });
   }
   return msgs;
 }
