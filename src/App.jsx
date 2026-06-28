@@ -413,11 +413,12 @@ export default function App() {
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
-    // منع التكرار
-    const exists = bibliography.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
-    if (exists) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return; }
-
-    saveBibliography([...bibliography, newEntry]);
+    // منع التكرار + تحديث ذري + فرز تفاعلي تلقائي
+    saveBibliography(prev => {
+      const dup = prev.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
+      if (dup) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return prev; }
+      return [...prev, newEntry];
+    });
   };
 
   // ترتيب المراجع: أقسام ثم أبجدي
