@@ -14,7 +14,597 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      bibliography: {
+        Row: {
+          added_at: string | null
+          author: string | null
+          bib_entry: string | null
+          category: string | null
+          created_at: string
+          doc_id: string | null
+          id: string
+          section: string | null
+          sort_key: string | null
+          title: string | null
+          user_id: string | null
+          year: string | null
+        }
+        Insert: {
+          added_at?: string | null
+          author?: string | null
+          bib_entry?: string | null
+          category?: string | null
+          created_at?: string
+          doc_id?: string | null
+          id?: string
+          section?: string | null
+          sort_key?: string | null
+          title?: string | null
+          user_id?: string | null
+          year?: string | null
+        }
+        Update: {
+          added_at?: string | null
+          author?: string | null
+          bib_entry?: string | null
+          category?: string | null
+          created_at?: string
+          doc_id?: string | null
+          id?: string
+          section?: string | null
+          sort_key?: string | null
+          title?: string | null
+          user_id?: string | null
+          year?: string | null
+        }
+        Relationships: []
+      }
+      cards: {
+        Row: {
+          ai_content: string | null
+          chapter_id: number | null
+          created_at: string
+          date: string | null
+          id: string
+          notes: string | null
+          related_doc_ids: string[] | null
+          section_id: string | null
+          tags: string[] | null
+          title: string | null
+          topic: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ai_content?: string | null
+          chapter_id?: number | null
+          created_at?: string
+          date?: string | null
+          id?: string
+          notes?: string | null
+          related_doc_ids?: string[] | null
+          section_id?: string | null
+          tags?: string[] | null
+          title?: string | null
+          topic?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ai_content?: string | null
+          chapter_id?: number | null
+          created_at?: string
+          date?: string | null
+          id?: string
+          notes?: string | null
+          related_doc_ids?: string[] | null
+          section_id?: string | null
+          tags?: string[] | null
+          title?: string | null
+          topic?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      chapters: {
+        Row: {
+          chapter_id: number
+          color: string | null
+          created_at: string
+          id: string
+          sections: Json | null
+          title_ar: string | null
+          user_id: string | null
+        }
+        Insert: {
+          chapter_id: number
+          color?: string | null
+          created_at?: string
+          id?: string
+          sections?: Json | null
+          title_ar?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          chapter_id?: number
+          color?: string | null
+          created_at?: string
+          id?: string
+          sections?: Json | null
+          title_ar?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      custom_formats: {
+        Row: {
+          created_at: string
+          id: string
+          name: string | null
+          templates: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          templates?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string | null
+          templates?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      library_sources: {
+        Row: {
+          analyzed: boolean | null
+          author: string | null
+          chapter_id: number | null
+          created_at: string
+          file_name: string | null
+          file_size: number | null
+          file_type: string | null
+          how_to_use: string | null
+          id: string
+          important_pages: string | null
+          keywords: string[] | null
+          language: string | null
+          priority: string | null
+          section_id: string | null
+          source_type: string | null
+          status: string | null
+          sub_section_id: string | null
+          summary: string | null
+          title: string | null
+          upload_date: string | null
+          user_id: string | null
+          why_important: string | null
+          year: string | null
+        }
+        Insert: {
+          analyzed?: boolean | null
+          author?: string | null
+          chapter_id?: number | null
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          how_to_use?: string | null
+          id?: string
+          important_pages?: string | null
+          keywords?: string[] | null
+          language?: string | null
+          priority?: string | null
+          section_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          sub_section_id?: string | null
+          summary?: string | null
+          title?: string | null
+          upload_date?: string | null
+          user_id?: string | null
+          why_important?: string | null
+          year?: string | null
+        }
+        Update: {
+          analyzed?: boolean | null
+          author?: string | null
+          chapter_id?: number | null
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          how_to_use?: string | null
+          id?: string
+          important_pages?: string | null
+          keywords?: string[] | null
+          language?: string | null
+          priority?: string | null
+          section_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          sub_section_id?: string | null
+          summary?: string | null
+          title?: string | null
+          upload_date?: string | null
+          user_id?: string | null
+          why_important?: string | null
+          year?: string | null
+        }
+        Relationships: []
+      }
+      researcher_analysis: {
+        Row: {
+          chapter_id: number | null
+          content: string | null
+          created_at: string
+          id: string
+          section_id: string | null
+          user_id: string | null
+          version: number | null
+        }
+        Insert: {
+          chapter_id?: number | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          section_id?: string | null
+          user_id?: string | null
+          version?: number | null
+        }
+        Update: {
+          chapter_id?: number | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          section_id?: string | null
+          user_id?: string | null
+          version?: number | null
+        }
+        Relationships: []
+      }
+      sources: {
+        Row: {
+          access_date: string | null
+          archive_ref: string | null
+          author: string | null
+          category: string | null
+          chapter_id: number | null
+          college: string | null
+          created_at: string
+          degree: string | null
+          edition: string | null
+          id: string
+          institution: string | null
+          is_new: boolean | null
+          issue: string | null
+          journal: string | null
+          newspaper: string | null
+          notes: string | null
+          pages: string | null
+          place: string | null
+          priority: string | null
+          publisher: string | null
+          section_id: string | null
+          source_type: string | null
+          status: string | null
+          title: string | null
+          university: string | null
+          url: string | null
+          user_id: string | null
+          volume: string | null
+          year: string | null
+        }
+        Insert: {
+          access_date?: string | null
+          archive_ref?: string | null
+          author?: string | null
+          category?: string | null
+          chapter_id?: number | null
+          college?: string | null
+          created_at?: string
+          degree?: string | null
+          edition?: string | null
+          id?: string
+          institution?: string | null
+          is_new?: boolean | null
+          issue?: string | null
+          journal?: string | null
+          newspaper?: string | null
+          notes?: string | null
+          pages?: string | null
+          place?: string | null
+          priority?: string | null
+          publisher?: string | null
+          section_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          title?: string | null
+          university?: string | null
+          url?: string | null
+          user_id?: string | null
+          volume?: string | null
+          year?: string | null
+        }
+        Update: {
+          access_date?: string | null
+          archive_ref?: string | null
+          author?: string | null
+          category?: string | null
+          chapter_id?: number | null
+          college?: string | null
+          created_at?: string
+          degree?: string | null
+          edition?: string | null
+          id?: string
+          institution?: string | null
+          is_new?: boolean | null
+          issue?: string | null
+          journal?: string | null
+          newspaper?: string | null
+          notes?: string | null
+          pages?: string | null
+          place?: string | null
+          priority?: string | null
+          publisher?: string | null
+          section_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          title?: string | null
+          university?: string | null
+          url?: string | null
+          user_id?: string | null
+          volume?: string | null
+          year?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_decisions: {
+        Row: {
+          content: string | null
+          created_at: string
+          created_by: string | null
+          date: string | null
+          decision_type: string | null
+          id: string
+          subject: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          decision_type?: string | null
+          id?: string
+          subject?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          decision_type?: string | null
+          id?: string
+          subject?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_files: {
+        Row: {
+          chapter: string | null
+          created_at: string
+          file_name: string | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          note: string | null
+          status: string | null
+          upload_date: string | null
+          uploaded_by: string | null
+          version: string | null
+        }
+        Insert: {
+          chapter?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          note?: string | null
+          status?: string | null
+          upload_date?: string | null
+          uploaded_by?: string | null
+          version?: string | null
+        }
+        Update: {
+          chapter?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          note?: string | null
+          status?: string | null
+          upload_date?: string | null
+          uploaded_by?: string | null
+          version?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_meetings: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          decisions: string | null
+          id: string
+          location: string | null
+          meeting_date: string | null
+          next_meeting_date: string | null
+          next_requirements: string | null
+          summary: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          decisions?: string | null
+          id?: string
+          location?: string | null
+          meeting_date?: string | null
+          next_meeting_date?: string | null
+          next_requirements?: string | null
+          summary?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          decisions?: string | null
+          id?: string
+          location?: string | null
+          meeting_date?: string | null
+          next_meeting_date?: string | null
+          next_requirements?: string | null
+          summary?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_notes: {
+        Row: {
+          chapter: string | null
+          content: string | null
+          created_at: string
+          created_by: string | null
+          date: string | null
+          done: boolean | null
+          id: string
+          note_type: string | null
+          section: string | null
+        }
+        Insert: {
+          chapter?: string | null
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          done?: boolean | null
+          id?: string
+          note_type?: string | null
+          section?: string | null
+        }
+        Update: {
+          chapter?: string | null
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          done?: boolean | null
+          id?: string
+          note_type?: string | null
+          section?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_questions: {
+        Row: {
+          chapter: string | null
+          content: string | null
+          created_at: string
+          created_by: string | null
+          date: string | null
+          id: string
+          note_type: string | null
+          priority: string | null
+          status: string | null
+          student_reply: string | null
+        }
+        Insert: {
+          chapter?: string | null
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          id?: string
+          note_type?: string | null
+          priority?: string | null
+          status?: string | null
+          student_reply?: string | null
+        }
+        Update: {
+          chapter?: string | null
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          date?: string | null
+          id?: string
+          note_type?: string | null
+          priority?: string | null
+          status?: string | null
+          student_reply?: string | null
+        }
+        Relationships: []
+      }
+      supervisor_reports: {
+        Row: {
+          content: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          saved_at: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          saved_at?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          saved_at?: string | null
+        }
+        Relationships: []
+      }
+      translations: {
+        Row: {
+          created_at: string
+          doc_meta: Json | null
+          file_name: string | null
+          id: string
+          key_points: Json | null
+          original_text: string | null
+          saved_at: string | null
+          translation: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          doc_meta?: Json | null
+          file_name?: string | null
+          id?: string
+          key_points?: Json | null
+          original_text?: string | null
+          saved_at?: string | null
+          translation?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          doc_meta?: Json | null
+          file_name?: string | null
+          id?: string
+          key_points?: Json | null
+          original_text?: string | null
+          saved_at?: string | null
+          translation?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
