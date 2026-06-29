@@ -3188,7 +3188,7 @@ ${docsContext}
             <div style={{background:"white",borderRadius:12,padding:16,border:"2px dashed #bfdbfe",marginBottom:14,textAlign:"center",cursor:"pointer"}} onClick={()=>libFileRef.current?.click()} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#3B82F6"}} onDragLeave={e=>e.currentTarget.style.borderColor="#bfdbfe"} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#bfdbfe";handleLibFileUpload(e.dataTransfer.files);}}>
               <div style={{fontSize:36,marginBottom:6}}>📂</div>
               <div style={{fontWeight:600,color:"#3B82F6",marginBottom:4}}>اسحب وأسقط ملفاتك هنا أو اضغط للاختيار</div>
-              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حد أقصى 50MB</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حجم أقصى 500MB للملف الواحد • حتى 20 ملف دفعة واحدة</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>يمكن رفع عدة ملفات دفعة واحدة — كتب، رسائل، بحوث، مقالات، صحف، وثائق...</div>
             </div>
 
