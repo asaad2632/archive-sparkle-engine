@@ -1138,12 +1138,31 @@ JSON المطلوب (أعده فقط بدون backticks):
     setTgLoading(false);
   };
 
-  const handleAddDoc = () => {
+  const handleAddDoc = async () => {
     if (!addForm.title) { showNotif("يجب إدخال عنوان الوثيقة","error"); return; }
+    // AI classification into the live thesis structure (chapter + section + sub-section)
+    let cls = null;
+    try {
+      showNotif("🤖 جاري تصنيف المصدر داخل هيكل الأطروحة...");
+      cls = await classifyToStructure({
+        title: addForm.title,
+        author: addForm.author,
+        sourceType: addForm.sourceType || addForm.category,
+        summary: addForm.notes,
+        extraContext: [addForm.keywords, addForm.archiveRef].filter(Boolean).join(" | "),
+      });
+    } catch (e) { console.error("[add-classify]", e); }
+
+    const finalChapterId = cls?.chapterId || (addForm.chapterId ? parseInt(addForm.chapterId) : null);
     const newDoc = {
       ...addForm,
       id: docs.length + 100 + Math.floor(Math.random()*100),
-      chapterId: addForm.chapterId ? parseInt(addForm.chapterId) : null,
+      chapterId: finalChapterId,
+      sectionId: cls?.subSectionId || cls?.sectionId || addForm.sectionId || "",
+      subSectionId: cls?.subSectionId || null,
+      section: addForm.section || cls?.subSectionName || cls?.sectionName || "",
+      classificationReason: cls?.classificationReason || "",
+      classificationConfidence: cls?.classificationConfidence || "",
       year: addForm.year || null,
       sourceType: addForm.sourceType || addForm.category || "وثيقة أرشيفية",
       category:   addForm.category   || addForm.sourceType || "وثيقة أرشيفية",
@@ -1151,7 +1170,7 @@ JSON المطلوب (أعده فقط بدون backticks):
 
     setDocs(prev => [newDoc, ...prev]);
     setAddForm({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
-    showNotif(`✅ تمت إضافة الوثيقة — الإجمالي: ${docs.length + 1}`);
+    showNotif(`✅ تمت الإضافة — ${cls?.sectionName ? "صُنِّف في: " + (cls.subSectionName || cls.sectionName) : "الإجمالي: " + (docs.length + 1)}`);
     setPage("search");
   };
 
