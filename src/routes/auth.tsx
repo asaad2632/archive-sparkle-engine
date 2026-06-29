@@ -22,21 +22,34 @@ function AuthPage() {
     setError(null);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        setError("تم إنشاء الحساب. تحقق من بريدك إن لزم، ثم سجل الدخول.");
+        if (data.session) {
+          window.location.href = "/";
+          return;
+        }
+        setError("تم إنشاء الحساب. سجل الدخول الآن.");
         setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        navigate({ to: "/" });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          console.error("[auth] signIn error:", error);
+          setError("بيانات الدخول غير صحيحة");
+          return;
+        }
+        if (data.session) {
+          window.location.href = "/";
+        } else {
+          setError("بيانات الدخول غير صحيحة");
+        }
       }
     } catch (err: any) {
-      setError(err?.message ?? "حدث خطأ");
+      console.error("[auth] unexpected:", err);
+      setError("حدث خطأ غير متوقع");
     } finally {
       setLoading(false);
     }
