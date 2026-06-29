@@ -379,6 +379,8 @@ export default function App() {
   const EMPTY_ADD_FORM = { title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"وثيقة أرشيفية",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع", edition:"", place:"", publisher:"", college:"", university:"", journal:"", volume:"", issue:"", pages:"", conference:"", newspaper:"", url:"", visitDate:"", agency:"" };
   const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
   const [exportTypeFilter, setExportTypeFilter] = useState("");
+  const [exportSearch, setExportSearch] = useState("");
+  const [bulkFootnoteModal, setBulkFootnoteModal] = useState(null); // {items:[{doc,page}], generated:[{doc,text}]|null}
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
