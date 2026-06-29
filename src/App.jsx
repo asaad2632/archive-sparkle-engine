@@ -409,6 +409,51 @@ export default function App() {
     try { localStorage.setItem("acadarchiv_chapters", JSON.stringify(updated)); } catch {}
   };
 
+  // ===== Phase 3a: Supabase cloud sync (chapters + user docs + deletion blacklist) =====
+  const cloudHydratedRef = useRef(false);
+  const syncUserDocsDebounced = useRef(debounce(syncUserDocs, 600)).current;
+  const syncChaptersDebounced = useRef(debounce(syncChapters, 600)).current;
+  const syncDeletedDebounced  = useRef(debounce(syncDeletedBaseDocs, 600)).current;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadPhase3a(CHAPTERS_DATA);
+        if (cancelled || !data) { cloudHydratedRef.current = true; return; }
+        setChapters(data.chapters);
+        setDeletedBaseDocs(data.deletedBaseDocs);
+        setDocs([
+          ...data.userDocs,
+          ...DOCS_FROM_INDEX.filter(d => !data.deletedBaseDocs.has(d.id)),
+        ]);
+      } catch (e) {
+        console.warn("[cloudSync] load failed, using localStorage fallback", e);
+      } finally {
+        cloudHydratedRef.current = true;
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    if (!cloudHydratedRef.current) return;
+    const userDocs = docs.filter(d => !BASE_DOC_IDS.has(d.id));
+    syncUserDocsDebounced(userDocs);
+  }, [docs, BASE_DOC_IDS, syncUserDocsDebounced]);
+
+  React.useEffect(() => {
+    if (!cloudHydratedRef.current) return;
+    syncChaptersDebounced(chapters);
+  }, [chapters, syncChaptersDebounced]);
+
+  React.useEffect(() => {
+    if (!cloudHydratedRef.current) return;
+    syncDeletedDebounced(deletedBaseDocs);
+  }, [deletedBaseDocs, syncDeletedDebounced]);
+
+
   const commitChapterEdit = () => {
     if (!editingChapter) return;
     const updated = chapters.map(ch =>
