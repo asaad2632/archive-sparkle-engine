@@ -671,19 +671,77 @@ export default function App() {
     try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
   };
 
+  // Build a structured view of the live `chapters` state for AI prompts.
+  // Sub-sections are detected by trailing lowercase letter (e.g. "2-1a" under "2-1").
+  const buildThesisStructure = () => {
+    return chapters.map(ch => {
+      const tops = ch.sections.filter(s => !/[a-z]$/i.test(String(s.id)));
+      return {
+        chapterId: ch.id,
+        chapterTitle: ch.titleAr,
+        sections: tops.map(s => ({
+          sectionId: s.id,
+          sectionTitle: s.title,
+          subSections: ch.sections
+            .filter(sub => sub.id !== s.id && String(sub.id).startsWith(String(s.id)) && /[a-z]$/i.test(String(sub.id)))
+            .map(sub => ({ subId: sub.id, subTitle: sub.title })),
+        })),
+      };
+    });
+  };
+
+  // Validate AI selection against the live structure; fall back gracefully.
+  const reconcileClassification = (parsed) => {
+    if (!parsed || typeof parsed !== "object") return parsed;
+    let chId = typeof parsed.chapterId === "string" ? parseInt(parsed.chapterId) : parsed.chapterId;
+    const ch = chapters.find(c => c.id === chId) || chapters[0];
+    if (!ch) return parsed;
+    chId = ch.id;
+    let secId = parsed.sectionId || "";
+    let subId = parsed.subSectionId || parsed.subId || "";
+    const allSecIds = ch.sections.map(s => String(s.id));
+    if (subId && !allSecIds.includes(String(subId))) subId = "";
+    if (secId && !allSecIds.includes(String(secId))) secId = "";
+    // If subId given but secId missing, derive secId by stripping trailing letter
+    if (!secId && subId) secId = String(subId).replace(/[a-z]$/i, "");
+    // Fallback to first top-level section
+    if (!secId) {
+      const firstTop = ch.sections.find(s => !/[a-z]$/i.test(String(s.id))) || ch.sections[0];
+      secId = firstTop?.id || "";
+    }
+    const secObj = ch.sections.find(s => String(s.id) === String(secId));
+    const subObj = ch.sections.find(s => String(s.id) === String(subId));
+    return {
+      ...parsed,
+      chapterId: chId,
+      chapterName: parsed.chapterName || ch.titleAr,
+      sectionId: secId,
+      sectionName: parsed.sectionName || secObj?.title || "",
+      subSectionId: subId || null,
+      subSectionName: parsed.subSectionName || subObj?.title || "",
+      classificationReason: parsed.reason || parsed.classificationReason || "",
+      classificationConfidence: parsed.confidence || parsed.classificationConfidence || "",
+    };
+  };
+
   const analyzeSource = async (src, payload) => {
     // payload: { text } for md/txt/docx, or { base64, mimeType } for pdf
     setLibAnalyzing(src.id);
+    const thesisStructure = buildThesisStructure();
     const prompt = `أنت مساعد بحثي متخصص في تاريخ "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
 
-حلّل هذا المصدر (الملف مرفق${payload?.base64 ? " كـ PDF — استخرج النص منه ولو كان ممسوحاً ضوئياً (OCR)" : ""}) وصنّفه للأطروحة التي تتكون من أربعة فصول:
-- الفصل 1: أوضاع الخليج عشية الحرب (1918-1939)
-- الفصل 2: الأهمية الاستراتيجية والعسكرية
-- الفصل 3: أثر الحرب على الأوضاع السياسية
-- الفصل 4: التحولات الاقتصادية في الخليج
+حلّل هذا المصدر (الملف مرفق${payload?.base64 ? " كـ PDF — استخرج النص منه ولو كان ممسوحاً ضوئياً (OCR)" : ""}).
+
+هذا هو الهيكل الكامل للأطروحة بفصولها ومباحثها وفقراتها (اختر **فقط** من المعرفات الموجودة أدناه ولا تخترع جديدة):
+${JSON.stringify(thesisStructure, null, 2)}
 
 اسم الملف: ${src.fileName}
 نوع الملف: ${src.fileType}
+
+بناءً على محتوى المصدر، حدد:
+1. رقم الفصل الأنسب (chapterId)
+2. معرف المبحث الأنسب (sectionId) من القائمة أعلاه
+3. معرف الفقرة الفرعية (subSectionId) إن وُجدت فقرة مناسبة، وإلا اتركها null
 
 أجب بـ JSON فقط بدون أي نص آخر وبدون code fences:
 {
@@ -694,6 +752,12 @@ export default function App() {
   "sourceType": "كتاب أو رسالة علمية أو بحث أو مقالة أو صحيفة أو وثيقة أرشيفية أو تقرير أو أطروحة دكتوراه",
   "chapterId": 1,
   "chapterName": "اسم الفصل المناسب",
+  "sectionId": "1-1",
+  "sectionName": "نص المبحث",
+  "subSectionId": null,
+  "subSectionName": "",
+  "confidence": "high أو medium أو low",
+  "reason": "سبب اختيار هذا المبحث تحديداً بناءً على محتوى المصدر",
   "sections": ["م1: ...", "م2: ..."],
   "priority": "★★★ أو ★★ أو ★",
   "importantPages": "صفحات مهمة مع أرقامها مثل: 45-67، 102، 230-245",
@@ -711,20 +775,53 @@ export default function App() {
         mimeType: payload?.mimeType,
         base64: payload?.base64,
         text: payload?.text,
-        max_tokens: 2000,
+        max_tokens: 2200,
       });
       const text = data.content?.map(c => c.text || "").join("") || "{}";
       const clean = text.replace(/```json|```/g, "").trim();
-      // Extract first {...} block in case model adds prose
       const match = clean.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(match ? match[0] : clean);
-      if (parsed && typeof parsed.chapterId === "string") parsed.chapterId = parseInt(parsed.chapterId) || null;
-      return parsed;
+      return reconcileClassification(parsed);
     } catch (err) {
       console.error("[analyzeSource]", err);
       return null;
     } finally {
       setLibAnalyzing(null);
+    }
+  };
+
+  // Standalone classifier — used by URL import and manual add to map a source
+  // into the live chapter/section/sub-section structure.
+  const classifyToStructure = async ({ title, author = "", summary = "", sourceType = "", extraContext = "" }) => {
+    const thesisStructure = buildThesisStructure();
+    try {
+      const data = await callLLM({
+        max_tokens: 600,
+        messages: [{
+          role: "user",
+          content: `صنّف هذا المصدر داخل هيكل الأطروحة التالية. اختر **فقط** من المعرفات الموجودة ولا تخترع جديدة.
+
+الهيكل:
+${JSON.stringify(thesisStructure, null, 2)}
+
+بيانات المصدر:
+- العنوان: ${title || "—"}
+- المؤلف: ${author || "—"}
+- النوع: ${sourceType || "—"}
+- ملخص/سياق: ${summary || extraContext || "—"}
+
+أجب بـ JSON فقط بدون code fences:
+{"chapterId":1,"chapterName":"","sectionId":"","sectionName":"","subSectionId":null,"subSectionName":"","confidence":"high|medium|low","reason":""}`
+        }]
+      });
+      const text = data.content?.map(c => c.text || "").join("") || "{}";
+      const clean = text.replace(/```json|```/g, "").trim();
+      const match = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match ? match[0] : clean);
+      return reconcileClassification(parsed);
+    } catch (err) {
+      console.error("[classifyToStructure]", err);
+      return null;
     }
   };
 
