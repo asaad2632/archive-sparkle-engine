@@ -477,17 +477,19 @@ export default function App() {
   const copyFootnoteAndRegister = async () => {
     if (!footnoteModal) return;
     if (!validatePageNumber()) return;
-    const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
+    const result = (footnoteResult && footnoteResult.trim())
+      ? footnoteResult
+      : generateFootnote(footnoteModal, footnotePageNum.trim());
     addToBibliography(footnoteModal, result);
-    setFootnoteModal(null);
-    setPage("bibliography");
     try {
       await navigator.clipboard.writeText(result);
-      showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
+      showNotif("✅ تم نسخ الهامش وإضافة المصدر للمراجع النهائية");
     } catch {
       showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
     }
+    setTimeout(() => setFootnoteModal(null), 2000);
   };
+
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
   const [bibliography, setBibliography] = useState(() => {
@@ -1819,43 +1821,69 @@ ${docsContext}
       {/* ===== MODAL: توليد الهامش الفوري ===== */}
       {footnoteModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:560,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
+          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:620,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"90vh",overflowY:"auto"}}>
             {/* رأس النافذة */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 Export Footnote</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 توليد هامش المتن</div>
               <button onClick={()=>setFootnoteModal(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
             </div>
+            {/* معلومات المصدر (للقراءة فقط) */}
+            <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginBottom:14,border:"0.5px solid #e2e8f0",fontSize:12,lineHeight:1.9}}>
+              <div><strong>العنوان:</strong> {footnoteModal.title || "—"}</div>
+              <div><strong>المؤلف:</strong> {footnoteModal.author || "—"}</div>
+              <div><strong>النوع:</strong> {footnoteModal.category || footnoteModal.sourceType || "وثيقة أرشيفية"}</div>
+            </div>
             {/* حقل رقم الصفحة */}
-            <div style={{marginBottom:14}}>
-              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>Page Number / رقم الصفحة *</label>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>رقم الصفحة *</label>
               <input
                 ref={footnotePageRef}
                 type="text"
                 required
                 value={footnotePageNum}
                 onChange={e=>{ setFootnotePageNum(e.target.value); setFootnoteResult(""); }}
-                onKeyDown={e=>{ if(e.key==="Enter") copyFootnoteAndRegister(); }}
+                onKeyDown={e=>{ if(e.key==="Enter") handleGenerateFootnote(); }}
                 aria-label="Page Number"
-                placeholder="45 أو 45-47"
+                placeholder="مثال: 45 أو 45-47"
                 style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${footnotePageNum.trim()?"#86efac":"#fca5a5"}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
               />
               {!footnotePageNum.trim() && (
-                <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل أي عملية</div>
+                <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل توليد الهامش</div>
               )}
             </div>
-            {/* الإجراء الرئيسي: نسخ + تسجيل بضغطة واحدة */}
+            {/* زر توليد الهامش */}
+            <button
+              onClick={handleGenerateFootnote}
+              disabled={!footnotePageNum.trim()}
+              style={{width:"100%",padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#3B82F6":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
+              توليد الهامش
+            </button>
+            {/* الهامش المُولَّد (قابل للتعديل) */}
+            {footnoteResult && (
+              <div style={{marginBottom:12}}>
+                <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>الهامش المُولَّد (يمكن التعديل)</label>
+                <textarea
+                  value={footnoteResult}
+                  onChange={e=>setFootnoteResult(e.target.value)}
+                  rows={5}
+                  style={{width:"100%",padding:10,borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl",lineHeight:1.8,resize:"vertical"}}
+                />
+              </div>
+            )}
+            {/* أزرار النسخ والإغلاق */}
             <div style={{display:"flex",gap:8}}>
               <button
                 onClick={copyFootnoteAndRegister}
-                disabled={!footnotePageNum.trim()}
-                style={{flex:1,padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
-                📋 Copy Footnote / نسخ الهامش
+                disabled={!footnoteResult.trim()}
+                style={{flex:1,padding:"10px",borderRadius:8,background:footnoteResult.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnoteResult.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
+                📋 نسخ الهامش
               </button>
-              <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إغلاق</button>
+              <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
             </div>
           </div>
         </div>
       )}
+
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",color:"white",padding:"0 16px"}}>
@@ -2660,13 +2688,22 @@ ${docsContext}
                 </div>
                 <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
                   {combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>(
-                    <label key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",cursor:"pointer",fontSize:11}}>
-                      <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
-                      <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
-                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
-                      <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
-                    </label>
+                    <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",fontSize:11}}>
+                      <label style={{display:"flex",alignItems:"center",gap:8,flex:1,cursor:"pointer",minWidth:0}}>
+                        <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
+                        <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
+                        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
+                        <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
+                      </label>
+                      <button
+                        onClick={(e)=>{e.stopPropagation();openFootnoteModal(d);}}
+                        title="توليد مرجع وإضافته للمراجع النهائية"
+                        style={{padding:"4px 10px",borderRadius:6,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>
+                        📝 توليد مرجع
+                      </button>
+                    </div>
                   ))}
+
                 </div>
                 <button onClick={handleExport} style={{marginTop:12,width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>توليد {exportSelected.length} مرجع</button>
               </div>
