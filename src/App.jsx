@@ -924,13 +924,17 @@ ${JSON.stringify(thesisStructure, null, 2)}
     if (!libUrlInput.trim()) return;
     setLibUrlLoading(true);
     try {
+      const thesisStructure = buildThesisStructure();
       const data = await callLLM({
-          max_tokens: 1500,
+          max_tokens: 1800,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: `اذهب لهذا الرابط واستخرج بيانات المصدر لأطروحة "الخليج العربي في الحرب العالمية الثانية 1939-1945":\n${libUrlInput}\n\nأجب بـ JSON فقط:\n{"title":"","author":"","year":null,"language":"","sourceType":"","chapterId":1,"chapterName":"","sections":[],"priority":"★★","importantPages":"","summary":"","keywords":[],"whyImportant":"","howToUse":"","fileName":"${libUrlInput}"}` }]
+          messages: [{ role: "user", content: `اذهب لهذا الرابط واستخرج بيانات المصدر لأطروحة "الخليج العربي في الحرب العالمية الثانية 1939-1945":\n${libUrlInput}\n\nهذا هو هيكل الأطروحة (اختر فقط من المعرفات أدناه ولا تخترع جديدة):\n${JSON.stringify(thesisStructure, null, 2)}\n\nأجب بـ JSON فقط بدون code fences:\n{"title":"","author":"","year":null,"language":"","sourceType":"","chapterId":1,"chapterName":"","sectionId":"","sectionName":"","subSectionId":null,"subSectionName":"","confidence":"high|medium|low","reason":"","sections":[],"priority":"★★","importantPages":"","summary":"","keywords":[],"whyImportant":"","howToUse":"","fileName":"${libUrlInput}"}` }]
         });
       const text = data.content?.map(c => c.text || "").join("") || "{}";
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const clean = text.replace(/```json|```/g, "").trim();
+      const match = clean.match(/\{[\s\S]*\}/);
+      const rawParsed = JSON.parse(match ? match[0] : clean);
+      const parsed = reconcileClassification(rawParsed);
       const newSrc = {
         id: Date.now(), fileName: libUrlInput, fileType: "url",
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
