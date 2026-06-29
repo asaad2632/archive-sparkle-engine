@@ -477,17 +477,19 @@ export default function App() {
   const copyFootnoteAndRegister = async () => {
     if (!footnoteModal) return;
     if (!validatePageNumber()) return;
-    const result = footnoteResult || generateFootnote(footnoteModal, footnotePageNum.trim());
+    const result = (footnoteResult && footnoteResult.trim())
+      ? footnoteResult
+      : generateFootnote(footnoteModal, footnotePageNum.trim());
     addToBibliography(footnoteModal, result);
-    setFootnoteModal(null);
-    setPage("bibliography");
     try {
       await navigator.clipboard.writeText(result);
-      showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
+      showNotif("✅ تم نسخ الهامش وإضافة المصدر للمراجع النهائية");
     } catch {
       showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
     }
+    setTimeout(() => setFootnoteModal(null), 2000);
   };
+
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
   const [bibliography, setBibliography] = useState(() => {
