@@ -73,19 +73,44 @@ export const Route = createFileRoute("/api/ai-chat")({
             sendModel = model;
           }
 
-          const resp = await fetch(endpoint, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              model: sendModel,
-              messages: toOpenAIMessages(body.messages || [], body.system, !isGroq),
-              max_tokens: body.max_tokens ?? 1024,
-            }),
+          const payload = JSON.stringify({
+            model: sendModel,
+            messages: toOpenAIMessages(body.messages || [], body.system, !isGroq),
+            max_tokens: body.max_tokens ?? 1024,
           });
-          if (!resp.ok) {
-            const txt = await resp.text();
-            return new Response(JSON.stringify({ error: `AI Gateway ${resp.status}: ${txt}` }), {
-              status: resp.status,
+
+          let resp: Response | null = null;
+          let lastErrText = "";
+          for (let attempt = 0; attempt < 3; attempt++) {
+            resp = await fetch(endpoint, { method: "POST", headers, body: payload });
+            if (resp.ok) break;
+            if (resp.status !== 429 && resp.status < 500) break;
+            lastErrText = await resp.text().catch(() => "");
+            await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+          }
+
+          // Fallback: if Groq still failing with 5xx/429, retry once on Lovable Cloud
+          if (resp && !resp.ok && isGroq && (resp.status === 429 || resp.status >= 500)) {
+            const key = process.env.LOVABLE_API_KEY;
+            if (key) {
+              const fbPayload = JSON.stringify({
+                model: "google/gemini-2.5-flash",
+                messages: toOpenAIMessages(body.messages || [], body.system, true),
+                max_tokens: body.max_tokens ?? 1024,
+              });
+              resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Lovable-API-Key": key },
+                body: fbPayload,
+              });
+            }
+          }
+
+          if (!resp || !resp.ok) {
+            const txt = resp ? await resp.text().catch(() => lastErrText) : lastErrText;
+            const status = resp?.status ?? 502;
+            return new Response(JSON.stringify({ error: `AI Gateway ${status}: ${txt}` }), {
+              status,
               headers: { "Content-Type": "application/json" },
             });
           }
