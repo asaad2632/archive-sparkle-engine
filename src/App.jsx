@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
+import SupervisorRoom from "./SupervisorRoom";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
@@ -2009,7 +2010,7 @@ ${docsContext}
     {id:"bibliography",  label:`المراجع النهائية (${bibliography.length})`,       icon:"📋"},
     {id:"defense",       label:"محاكي المناقشة",                                  icon:"🎓"},
     {id:"ai",            label:"مساعد ذكي",                                       icon:"🤖"},
-    {id:"telegram",      label:"تيليغرام",                                        icon:"✈️"},
+    {id:"supervisor",    label:"غرفة المشرف",                                     icon:"👨‍🏫"},
   ];
 
   return (
@@ -4557,106 +4558,15 @@ ${docsContext}
           </div>
         )}
 
-        {/* ===== TELEGRAM ===== */}
-        {page==="telegram" && (
-          <div>
-            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>✈️ محرك البحث — تيليغرام والمصادر الرقمية</h1>
-            <p style={{color:"#64748b",fontSize:13,marginBottom:4}}>ابحث عن مصادر أطروحتك في قنوات تيليغرام الأرشيفية والتاريخية</p>
-            <div style={{background:"#fef9c3",borderRadius:8,padding:12,marginBottom:16,border:"0.5px solid #fde68a",fontSize:12,color:"#78350f"}}>
-              ⚠️ <strong>ملاحظة:</strong> تيليغرام لا يوفر API بحث عام مجاني. هذا المحرك يستخدم الذكاء الاصطناعي لاقتراح القنوات والمصادر ذات الصلة، ثم تنتقل إليها يدوياً.
-            </div>
-            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginBottom:14}}>
-              <div style={{display:"flex",gap:10,marginBottom:12}}>
-                <input value={tgQuery} onChange={e=>setTgQuery(e.target.value)} placeholder="مثال: وثائق IOR الخليج العربي، أرشيف بريطاني، RAF البحرين..." style={{flex:1,padding:"9px 14px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter")handleTgSearch();}}/>
-                <button onClick={handleTgSearch} disabled={tgLoading} style={{padding:"9px 18px",borderRadius:8,background:"#0088cc",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
-                  {tgLoading?"⏳ بحث...":"🔍 بحث"}
-                </button>
-              </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                {["وثائق تاريخية خليج عربي","IOR أرشيف بريطاني","RAF البحرين الحرب العالمية","نفط الكويت 1940","تاريخ الخليج العثماني"].map(q=>(
-                  <button key={q} onClick={()=>setTgQuery(q)} style={{padding:"4px 10px",borderRadius:20,border:"0.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{q}</button>
-                ))}
-              </div>
-            </div>
-
-            {tgLoading && <div style={{background:"white",borderRadius:12,padding:30,textAlign:"center",border:"0.5px solid #e2e8f0"}}><div style={{fontSize:36}}>🔍</div><div style={{color:"#64748b",marginTop:8}}>جاري البحث والتحليل...</div></div>}
-
-            {tgResults && !tgLoading && !tgResults.error && (
-              <div style={{display:"grid",gap:14}}>
-                {tgResults.channels && tgResults.channels.length>0 && (
-                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:12,color:"#0088cc"}}>📢 قنوات ومجموعات تيليغرام مقترحة</div>
-                    {tgResults.channels.map((ch,i)=>(
-                      <div key={i} style={{padding:"10px 0",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start"}}>
-                        <span style={{fontSize:20,flexShrink:0}}>✈️</span>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:500,fontSize:13}}>{ch.name}</div>
-                          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{ch.description}</div>
-                          {ch.url && <a href={ch.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#0088cc",display:"block",marginTop:3}}>{ch.url}</a>}
-                        </div>
-                        {ch.url && <a href={ch.url} target="_blank" rel="noopener noreferrer" style={{padding:"5px 10px",borderRadius:6,background:"#e7f3ff",color:"#0088cc",textDecoration:"none",fontSize:11,flexShrink:0}}>فتح</a>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {tgResults.related_docs && tgResults.related_docs.length>0 && (
-                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:12,color:"#8B5CF6"}}>📄 وثائق مقترحة للإضافة</div>
-                    {tgResults.related_docs.map((d,i)=>(
-                      <div key={i} style={{padding:"10px 0",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start"}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:500,fontSize:13}}>{d.title}</div>
-                          {d.archiveRef && <div style={{fontSize:11,color:"#8B5CF6",fontFamily:"monospace",marginTop:2}}>{d.archiveRef}</div>}
-                          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{d.relevance}</div>
-                        </div>
-                        <button onClick={()=>{setAddForm(p=>({...p,title:d.title,archiveRef:d.archiveRef||"",notes:d.relevance||""}));setPage("add");showNotif("تم نقل بيانات الوثيقة للنموذج");}} style={{padding:"5px 10px",borderRadius:6,background:"#f5f3ff",color:"#8B5CF6",border:"none",cursor:"pointer",fontSize:11,fontFamily:"inherit",flexShrink:0}}>إضافة +</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {tgResults.keywords && tgResults.keywords.length>0 && (
-                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>🔑 كلمات مفتاحية للبحث في تيليغرام</div>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {tgResults.keywords.map((k,i)=><span key={i} style={{background:"#f1f5f9",borderRadius:6,padding:"4px 10px",fontSize:12}}>{k}</span>)}
-                    </div>
-                  </div>
-                )}
-                {tgResults.qdl_suggestions && tgResults.qdl_suggestions.length>0 && (
-                  <div style={{background:"#eff6ff",borderRadius:12,padding:16,border:"0.5px solid #bfdbfe"}}>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:"#3B82F6"}}>🔗 اقتراحات QDL ذات الصلة</div>
-                    {tgResults.qdl_suggestions.map((s,i)=>(
-                      <div key={i} style={{padding:"6px 0",borderBottom:"0.5px solid #dbeafe",fontSize:13}}>• {s}</div>
-                    ))}
-                    <a href="https://www.qdl.qa/en/search#q=%D8%A7%D9%84%D8%AE%D9%84%D9%8A%D8%AC%20%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A&start=0" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,padding:"7px 14px",borderRadius:8,background:"#3B82F6",color:"white",textDecoration:"none",fontSize:12}}>فتح QDL ←</a>
-                  </div>
-                )}
-              </div>
-            )}
-            {tgResults && tgResults.error && (
-              <div style={{background:"#fee2e2",borderRadius:12,padding:14,border:"0.5px solid #fca5a5",fontSize:13,color:"#dc2626"}}>{tgResults.error}</div>
-            )}
-
-            {/* Telegram Direct Links */}
-            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginTop:14}}>
-              <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>🔗 روابط مباشرة لقنوات أرشيفية موثوقة</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                {[
-                  {name:"قناة الوثائق التاريخية العربية","url":"https://t.me/tarikh_waثائق"},
-                  {name:"أرشيف الخليج والجزيرة العربية","url":"https://t.me/gulf_archive"},
-                  {name:"مكتبة التاريخ الإسلامي","url":"https://t.me/islamic_history_lib"},
-                  {name:"Qatar Digital Library (موقع رسمي)","url":"https://www.qdl.qa"},
-                  {name:"British National Archives","url":"https://discovery.nationalarchives.gov.uk"},
-                  {name:"Internet Archive — الوثائق العربية","url":"https://archive.org/search?query=gulf+arabia+1940"},
-                ].map((l,i)=>(
-                  <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,background:"#f8fafc",border:"0.5px solid #e2e8f0",textDecoration:"none",color:"#1e293b",fontSize:12}}>
-                    <span style={{fontSize:16}}>{l.url.includes("t.me")?"✈️":"🌐"}</span>
-                    <span>{l.name}</span>
-                  </a>
-                ))}
-              </div>
-            </div>
-          </div>
+        {/* ===== SUPERVISOR ROOM ===== */}
+        {page==="supervisor" && (
+          <SupervisorRoom
+            chapters={chapters}
+            combinedDocs={combinedDocs}
+            bibliography={bibliography}
+            showNotif={showNotif}
+            setConfirmDialog={setConfirmDialog}
+          />
         )}
 
       </div>
