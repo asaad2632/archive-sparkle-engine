@@ -842,7 +842,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
     r.readAsText(file, "utf-8");
   });
 
-  const MAX_LIB_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const MAX_LIB_FILE_SIZE = 500 * 1024 * 1024; // 500MB per file
+  const MAX_LIB_FILES_BATCH = 20; // up to 20 files at once
+  const MAX_LIB_TOTAL_SIZE = 1024 * 1024 * 1024; // 1GB total per batch
 
   // Functional update for library that persists to localStorage too
   const updateLibrary = (updater) => {
