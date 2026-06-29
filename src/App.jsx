@@ -439,6 +439,83 @@ export default function App() {
     showNotif("✅ تم تحديث عنوان المبحث وإعادة فرز الوثائق تلقائياً");
   };
 
+  // ===== إضافة مبحث / فقرة فرعية ديناميكياً =====
+  const [addingSecChId, setAddingSecChId]   = useState(null);
+  const [newSecForm, setNewSecForm]         = useState({ title: "", num: "" });
+  const [addingSubSecId, setAddingSubSecId] = useState(null);
+  const [newSubForm, setNewSubForm]         = useState({ title: "" });
+
+  const openAddSection = (chId) => {
+    const ch = chapters.find(c => c.id === chId);
+    const mainSecs = ch ? ch.sections.filter(s => !/[a-z]/i.test(s.id)) : [];
+    setAddingSecChId(chId);
+    setNewSecForm({ title: "", num: String(mainSecs.length + 1) });
+    setAddingSubSecId(null);
+  };
+
+  const submitAddSection = (chId) => {
+    const title = (newSecForm.title || "").trim();
+    if (!title) { showNotif("⚠️ عنوان المبحث مطلوب", "error"); return; }
+    const ch = chapters.find(c => c.id === chId);
+    if (!ch) return;
+    const num = (newSecForm.num || "").trim() || String(ch.sections.filter(s => !/[a-z]/i.test(s.id)).length + 1);
+    const newId = `${chId}-${num}`;
+    if (ch.sections.some(s => s.id === newId)) { showNotif("⚠️ رقم المبحث مستخدم بالفعل", "error"); return; }
+    const fullTitle = title.startsWith("م") ? title : `م${num}: ${title}`;
+    const updated = chapters.map(c =>
+      c.id === chId ? { ...c, sections: [...c.sections, { id: newId, title: fullTitle, userAdded: true }] } : c
+    );
+    saveChapters(updated);
+    setAddingSecChId(null);
+    setNewSecForm({ title: "", num: "" });
+    showNotif("✅ تم إضافة المبحث");
+  };
+
+  const openAddSubSection = (secId) => {
+    setAddingSubSecId(secId);
+    setNewSubForm({ title: "" });
+    setAddingSecChId(null);
+  };
+
+  const submitAddSubSection = (chId, secId) => {
+    const title = (newSubForm.title || "").trim();
+    if (!title) { showNotif("⚠️ عنوان الفقرة الفرعية مطلوب", "error"); return; }
+    const ch = chapters.find(c => c.id === chId);
+    if (!ch) return;
+    const subs = ch.sections.filter(s => s.id !== secId && s.id.startsWith(secId) && /^[a-z]+$/i.test(s.id.slice(secId.length)));
+    const letter = String.fromCharCode(97 + subs.length);
+    const newId = `${secId}${letter}`;
+    const updated = chapters.map(c =>
+      c.id === chId ? { ...c, sections: [...c.sections, { id: newId, title, userAdded: true }] } : c
+    );
+    saveChapters(updated);
+    setAddingSubSecId(null);
+    setNewSubForm({ title: "" });
+    showNotif("✅ تم إضافة الفقرة الفرعية");
+  };
+
+  const askDeleteSection = (chId, secId) => {
+    setConfirmDialog({
+      title: "تأكيد الحذف",
+      message: "هل تريد حذف هذا المبحث وكل فقراته الفرعية؟ لا يمكن التراجع.",
+      onConfirm: () => {
+        const updated = chapters.map(c =>
+          c.id === chId
+            ? { ...c, sections: c.sections.filter(s => {
+                if (s.id === secId) return false;
+                if (s.id.startsWith(secId) && /^[a-z]+$/i.test(s.id.slice(secId.length))) return false;
+                return true;
+              }) }
+            : c
+        );
+        saveChapters(updated);
+        showNotif("🗑️ تم حذف المبحث");
+      }
+    });
+  };
+
+
+
   // ===== الميزة 2: نافذة توليد الهامش الفوري =====
   const [footnoteModal, setFootnoteModal]     = useState(null); // الوثيقة المستهدفة
   const [confirmDialog, setConfirmDialog]     = useState(null); // {title,message,onConfirm}
