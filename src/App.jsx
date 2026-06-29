@@ -842,7 +842,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
     r.readAsText(file, "utf-8");
   });
 
-  const MAX_LIB_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+  const MAX_LIB_FILE_SIZE = 500 * 1024 * 1024; // 500MB per file
+  const MAX_LIB_FILES_BATCH = 20; // up to 20 files at once
+  const MAX_LIB_TOTAL_SIZE = 1024 * 1024 * 1024; // 1GB total per batch
 
   // Functional update for library that persists to localStorage too
   const updateLibrary = (updater) => {
@@ -855,9 +857,19 @@ ${JSON.stringify(thesisStructure, null, 2)}
 
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
+    const fileArr = Array.from(files);
+    if (fileArr.length > MAX_LIB_FILES_BATCH) {
+      showNotif(`⚠️ يمكن رفع حتى ${MAX_LIB_FILES_BATCH} ملف دفعة واحدة فقط`, "error");
+      return;
+    }
+    const totalSize = fileArr.reduce((s, f) => s + f.size, 0);
+    if (totalSize > MAX_LIB_TOTAL_SIZE) {
+      showNotif(`⚠️ الحجم الإجمالي يتجاوز 1 غيغابايت — قلل عدد الملفات`, "error");
+      return;
+    }
     setLibUploading(true);
     const IMG_EXT = ["jpg","jpeg","png","webp","gif","tif","tiff","bmp","heic"];
-    for (const file of Array.from(files)) {
+    for (const file of fileArr) {
       const ext = (file.name.split(".").pop() || "").toLowerCase();
       const isImage = IMG_EXT.includes(ext);
       if (!["pdf","md","txt","docx", ...IMG_EXT].includes(ext)) {
@@ -865,7 +877,7 @@ ${JSON.stringify(thesisStructure, null, 2)}
         continue;
       }
       if (file.size > MAX_LIB_FILE_SIZE) {
-        showNotif(`⚠️ ${file.name} يتجاوز الحد الأقصى 50MB`, "error");
+        showNotif(`حجم الملف كبير جداً — الحد الأقصى 500 ميغابايت`, "error");
         continue;
       }
 
@@ -3176,7 +3188,7 @@ ${docsContext}
             <div style={{background:"white",borderRadius:12,padding:16,border:"2px dashed #bfdbfe",marginBottom:14,textAlign:"center",cursor:"pointer"}} onClick={()=>libFileRef.current?.click()} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#3B82F6"}} onDragLeave={e=>e.currentTarget.style.borderColor="#bfdbfe"} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#bfdbfe";handleLibFileUpload(e.dataTransfer.files);}}>
               <div style={{fontSize:36,marginBottom:6}}>📂</div>
               <div style={{fontWeight:600,color:"#3B82F6",marginBottom:4}}>اسحب وأسقط ملفاتك هنا أو اضغط للاختيار</div>
-              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حد أقصى 50MB</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حجم أقصى 500MB للملف الواحد • حتى 20 ملف دفعة واحدة</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>يمكن رفع عدة ملفات دفعة واحدة — كتب، رسائل، بحوث، مقالات، صحف، وثائق...</div>
             </div>
 
