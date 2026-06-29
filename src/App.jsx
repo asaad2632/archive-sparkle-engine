@@ -1886,6 +1886,88 @@ ${docsContext}
         </div>
       )}
 
+      {/* ===== MODAL: توليد هوامش متعددة ===== */}
+      {bulkFootnoteModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:760,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 توليد هوامش متعددة ({bulkFootnoteModal.items.length})</div>
+              <button onClick={()=>setBulkFootnoteModal(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
+            </div>
+
+            {!bulkFootnoteModal.generated ? (
+              <>
+                <div style={{fontSize:12,color:"#475569",marginBottom:10}}>أدخل رقم الصفحة لكل مصدر، ثم اضغط "توليد الهوامش".</div>
+                <div style={{maxHeight:"50vh",overflowY:"auto",border:"0.5px solid #e2e8f0",borderRadius:8,marginBottom:14}}>
+                  {bulkFootnoteModal.items.map((it, idx)=>(
+                    <div key={it.doc.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderBottom:"0.5px solid #f1f5f9",fontSize:12}}>
+                      <span style={{fontWeight:700,color:"#64748b",minWidth:22}}>{idx+1}.</span>
+                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.doc.title}>{it.doc.title}</span>
+                      <label style={{fontSize:11,color:"#475569"}}>ص</label>
+                      <input
+                        type="text"
+                        value={it.page}
+                        onChange={e=>{
+                          const v = e.target.value;
+                          setBulkFootnoteModal(m=>({...m, items: m.items.map((x,i)=>i===idx?{...x,page:v}:x)}));
+                        }}
+                        placeholder="رقم الصفحة"
+                        style={{width:120,padding:"6px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                  <button onClick={()=>{
+                    const missing = bulkFootnoteModal.items.some(it=>!it.page.trim());
+                    if (missing) { showNotif("⚠️ أدخل رقم الصفحة لكل مصدر","error"); return; }
+                    const generated = bulkFootnoteModal.items.map(it=>({
+                      doc: it.doc,
+                      page: it.page.trim(),
+                      text: buildArabicCitation(it.doc, it.page.trim(), true)
+                    }));
+                    setBulkFootnoteModal(m=>({...m, generated}));
+                  }} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit",fontSize:13}}>توليد الهوامش</button>
+                  <button onClick={()=>setBulkFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:12,color:"#475569",marginBottom:10}}>يمكنك تعديل أي هامش قبل النسخ والإضافة للمراجع النهائية.</div>
+                <div style={{maxHeight:"55vh",overflowY:"auto",marginBottom:14}}>
+                  {bulkFootnoteModal.generated.map((g, idx)=>(
+                    <div key={g.doc.id} style={{marginBottom:12}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"#1e293b",display:"block",marginBottom:4}}>الهامش {idx+1}:</label>
+                      <textarea
+                        value={g.text}
+                        onChange={e=>{
+                          const v = e.target.value;
+                          setBulkFootnoteModal(m=>({...m, generated: m.generated.map((x,i)=>i===idx?{...x,text:v}:x)}));
+                        }}
+                        rows={3}
+                        style={{width:"100%",padding:10,borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl",lineHeight:1.8,resize:"vertical"}}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                  <button onClick={async ()=>{
+                    const all = bulkFootnoteModal.generated.map((g,i)=>`${i+1}. ${g.text}`).join("\n\n");
+                    try { await navigator.clipboard.writeText(all); } catch {}
+                    bulkFootnoteModal.generated.forEach(g => addToBibliography(g.doc, g.text));
+                    showNotif(`✅ تم نسخ ${bulkFootnoteModal.generated.length} هوامش وإضافتها للمراجع النهائية`);
+                    setTimeout(()=>setBulkFootnoteModal(null), 2000);
+                  }} style={{padding:"10px 18px",borderRadius:8,background:"#10B981",color:"white",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit",fontSize:13}}>📋 نسخ جميع الهوامش</button>
+                  <button onClick={()=>setBulkFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+
+
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",color:"white",padding:"0 16px"}}>
