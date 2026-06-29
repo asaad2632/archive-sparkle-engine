@@ -3,6 +3,7 @@ import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
 import SupervisorRoom from "./SupervisorRoom";
+import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce } from "./cloudSync";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
