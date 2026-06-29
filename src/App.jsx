@@ -976,7 +976,8 @@ ${JSON.stringify(thesisStructure, null, 2)}
   // in Thesis Structure, Home Dashboard counts, Export page, and AI Assistant.
   const combinedDocs = (() => {
     const libAsDocs = (library || []).map(s => {
-      const secId = s.sectionId || (Array.isArray(s.sections) && s.sections[0]) || "";
+      // Prefer the most specific placement: sub-section > section > legacy sections[0]
+      const secId = s.subSectionId || s.sectionId || (Array.isArray(s.sections) && s.sections[0]) || "";
       return {
         id: typeof s.id === "string" && s.id.startsWith("lib-") ? s.id : `lib-${s.id}`,
         title: s.title || s.fileName || "مصدر من المكتبة",
