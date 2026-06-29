@@ -857,9 +857,19 @@ ${JSON.stringify(thesisStructure, null, 2)}
 
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
+    const fileArr = Array.from(files);
+    if (fileArr.length > MAX_LIB_FILES_BATCH) {
+      showNotif(`⚠️ يمكن رفع حتى ${MAX_LIB_FILES_BATCH} ملف دفعة واحدة فقط`, "error");
+      return;
+    }
+    const totalSize = fileArr.reduce((s, f) => s + f.size, 0);
+    if (totalSize > MAX_LIB_TOTAL_SIZE) {
+      showNotif(`⚠️ الحجم الإجمالي يتجاوز 1 غيغابايت — قلل عدد الملفات`, "error");
+      return;
+    }
     setLibUploading(true);
     const IMG_EXT = ["jpg","jpeg","png","webp","gif","tif","tiff","bmp","heic"];
-    for (const file of Array.from(files)) {
+    for (const file of fileArr) {
       const ext = (file.name.split(".").pop() || "").toLowerCase();
       const isImage = IMG_EXT.includes(ext);
       if (!["pdf","md","txt","docx", ...IMG_EXT].includes(ext)) {
@@ -867,7 +877,7 @@ ${JSON.stringify(thesisStructure, null, 2)}
         continue;
       }
       if (file.size > MAX_LIB_FILE_SIZE) {
-        showNotif(`⚠️ ${file.name} يتجاوز الحد الأقصى 50MB`, "error");
+        showNotif(`حجم الملف كبير جداً — الحد الأقصى 500 ميغابايت`, "error");
         continue;
       }
 
