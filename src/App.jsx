@@ -2122,11 +2122,16 @@ ${docsContext}
                             <span>🆕 {chDocs.filter(d=>d.isNew).length} جديدة</span>
                           </div>
                         </div>
-                        <div style={{display:"flex",gap:6}}>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           <button
                             onClick={()=>setEditingChapter({id:ch.id,value:ch.titleAr})}
                             style={{padding:"4px 10px",borderRadius:6,background:"white",border:`1px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
                             ✏️ تعديل
+                          </button>
+                          <button
+                            onClick={()=>openAddSection(ch.id)}
+                            style={{padding:"4px 10px",borderRadius:6,background:"white",border:`1px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
+                            ＋ مبحث
                           </button>
                           <button
                             onClick={()=>{setSearchFilters(p=>({...p,chapterId:ch.id.toString(),query:""}));setPage("search");}}
@@ -2138,11 +2143,35 @@ ${docsContext}
                     )}
                   </div>
 
+                  {/* ===== نموذج إضافة مبحث جديد ===== */}
+                  {addingSecChId === ch.id && (
+                    <div style={{padding:"12px 18px",background:`${ch.color}05`,borderBottom:`0.5px solid ${ch.color}20`,display:"grid",gap:8}}>
+                      <div style={{fontSize:12,fontWeight:600,color:ch.color}}>إضافة مبحث جديد إلى: {ch.titleAr}</div>
+                      <input
+                        autoFocus
+                        value={newSecForm.title}
+                        onChange={e=>setNewSecForm(p=>({...p,title:e.target.value}))}
+                        placeholder="عنوان المبحث *"
+                        style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${ch.color}50`,fontSize:12,fontFamily:"inherit",outline:"none"}}
+                      />
+                      <input
+                        value={newSecForm.num}
+                        onChange={e=>setNewSecForm(p=>({...p,num:e.target.value}))}
+                        placeholder="رقم المبحث (تلقائي)"
+                        style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${ch.color}50`,fontSize:12,fontFamily:"inherit",outline:"none",maxWidth:200}}
+                      />
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>submitAddSection(ch.id)} style={{padding:"6px 16px",borderRadius:7,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>إضافة</button>
+                        <button onClick={()=>{setAddingSecChId(null);setNewSecForm({title:"",num:""});}} style={{padding:"6px 14px",borderRadius:7,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>إلغاء</button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* ===== المباحث الرئيسية ===== */}
                   <div style={{padding:"12px 18px"}}>
                     {mainSections.map(sec=>{
                       const secDocs = combinedDocs.filter(d=>d.sectionId===sec.id||d.sectionId?.startsWith(sec.id));
-                      const subSections = ch.sections.filter(s=>s.id.startsWith(sec.id)&&s.id!==sec.id);
+                      const subSections = ch.sections.filter(s=>s.id.startsWith(sec.id)&&s.id!==sec.id&&/^[a-z]+$/i.test(s.id.slice(sec.id.length)));
                       const isEditingThisSec = editingSection?.chId===ch.id && editingSection?.secId===sec.id;
                       return (
                         <div key={sec.id} style={{marginBottom:16,paddingBottom:16,borderBottom:"0.5px solid #f1f5f9"}}>
@@ -2162,13 +2191,27 @@ ${docsContext}
                                 <button onClick={()=>setEditingSection(null)} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>إلغاء</button>
                               </div>
                             ) : (
-                              <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
-                                <div style={{fontWeight:600,fontSize:13,color:"#1e293b",flex:1}}>{sec.title}</div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
+                                <div style={{fontWeight:600,fontSize:13,color:"#1e293b",flex:1,minWidth:140}}>{sec.title}</div>
                                 <button
                                   onClick={e=>{e.stopPropagation();setEditingSection({chId:ch.id,secId:sec.id,value:sec.title});}}
                                   style={{padding:"2px 8px",borderRadius:5,background:"transparent",border:`0.5px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
                                   ✏️
                                 </button>
+                                <button
+                                  onClick={e=>{e.stopPropagation();openAddSubSection(sec.id);}}
+                                  title="إضافة فقرة فرعية"
+                                  style={{padding:"2px 8px",borderRadius:5,background:"transparent",border:`0.5px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
+                                  ＋ فقرة
+                                </button>
+                                {sec.userAdded && (
+                                  <button
+                                    onClick={e=>{e.stopPropagation();askDeleteSection(ch.id,sec.id);}}
+                                    title="حذف المبحث"
+                                    style={{padding:"2px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
+                                    🗑️
+                                  </button>
+                                )}
                               </div>
                             )}
                             <span style={{background:`${ch.color}15`,color:ch.color,borderRadius:5,padding:"1px 8px",fontSize:10,fontWeight:600,flexShrink:0}}>{secDocs.length} وثيقة</span>
@@ -2178,8 +2221,35 @@ ${docsContext}
                           {subSections.length>0 && (
                             <div style={{marginBottom:8,paddingRight:8,borderRight:`2px solid ${ch.color}30`}}>
                               {subSections.map(sub=>(
-                                <div key={sub.id} style={{fontSize:11,color:"#64748b",padding:"2px 0"}}>{sub.title}</div>
+                                <div key={sub.id} style={{fontSize:11,color:"#64748b",padding:"2px 0",display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{flex:1}}>{sub.title}</span>
+                                  {sub.userAdded && (
+                                    <button
+                                      onClick={()=>askDeleteSection(ch.id,sub.id)}
+                                      title="حذف الفقرة"
+                                      style={{padding:"1px 6px",borderRadius:4,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>
+                                      🗑️
+                                    </button>
+                                  )}
+                                </div>
                               ))}
+                            </div>
+                          )}
+
+                          {/* نموذج إضافة فقرة فرعية */}
+                          {addingSubSecId === sec.id && (
+                            <div style={{margin:"6px 0 10px",padding:"10px 12px",background:`${ch.color}06`,borderRadius:7,border:`0.5px solid ${ch.color}30`,display:"grid",gap:6}}>
+                              <input
+                                autoFocus
+                                value={newSubForm.title}
+                                onChange={e=>setNewSubForm({title:e.target.value})}
+                                placeholder="عنوان الفقرة الفرعية *"
+                                style={{padding:"6px 10px",borderRadius:6,border:`1px solid ${ch.color}40`,fontSize:11,fontFamily:"inherit",outline:"none"}}
+                              />
+                              <div style={{display:"flex",gap:6}}>
+                                <button onClick={()=>submitAddSubSection(ch.id,sec.id)} style={{padding:"5px 14px",borderRadius:6,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>إضافة</button>
+                                <button onClick={()=>{setAddingSubSecId(null);setNewSubForm({title:""});}} style={{padding:"5px 12px",borderRadius:6,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>إلغاء</button>
+                              </div>
                             </div>
                           )}
 
@@ -2225,7 +2295,32 @@ ${docsContext}
                         </div>
                       );
                     })}
+
+                    {/* ===== وثائق مضافة للفصل بدون مبحث محدد (Issue A safety net) ===== */}
+                    {(() => {
+                      const sectionIds = new Set(ch.sections.map(s => s.id));
+                      const unclassified = chDocs.filter(d => !d.sectionId || (!sectionIds.has(d.sectionId) && ![...sectionIds].some(sid => d.sectionId?.startsWith(sid))));
+                      if (unclassified.length === 0) return null;
+                      return (
+                        <div style={{marginTop:8,padding:"10px 12px",background:"#f0f9ff",borderRadius:8,border:"0.5px dashed #93c5fd"}}>
+                          <div style={{fontSize:12,fontWeight:600,color:"#1e40af",marginBottom:6}}>📥 وثائق مضافة لهذا الفصل (بدون مبحث محدد) — {unclassified.length}</div>
+                          <div style={{display:"grid",gap:5}}>
+                            {unclassified.map(d => (
+                              <div key={d.id} style={{display:"flex",gap:8,alignItems:"center",padding:"6px 10px",background:"white",borderRadius:6,border:"0.5px solid #dbeafe"}}>
+                                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelectedDoc(d);setPage("detail");}}>
+                                  <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</div>
+                                  {d.archiveRef && <div style={{fontSize:10,color:"#8B5CF6",fontFamily:"monospace"}}>{d.archiveRef}</div>}
+                                </div>
+                                <button onClick={e=>{e.stopPropagation();openFootnoteModal(d);}} title="توليد هامش" style={{padding:"3px 8px",borderRadius:5,background:"#faf5ff",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>📝</button>
+                                <button onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}} title="حذف" style={{padding:"3px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>🗑️</button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
+
                 </div>
               );
             })}
