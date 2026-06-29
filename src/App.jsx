@@ -2679,35 +2679,62 @@ ${docsContext}
                   </div>
                 )}
 
-                <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
-                  <button onClick={()=>setExportSelected(combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل</button>
-                  <button onClick={()=>setExportSelected(combinedDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
-                  <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
-                  <select value={exportTypeFilter} onChange={e=>setExportTypeFilter(e.target.value)} style={{marginInlineStart:"auto",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                    <option value="">🏷️ كل الأنواع</option>
-                    {["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
-                  {combinedDocs.filter(d=>!exportTypeFilter||(d.category||"وثيقة أرشيفية")===exportTypeFilter).map(d=>(
-                    <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",fontSize:11}}>
-                      <label style={{display:"flex",alignItems:"center",gap:8,flex:1,cursor:"pointer",minWidth:0}}>
-                        <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
-                        <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
-                        <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
-                        <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
-                      </label>
-                      <button
-                        onClick={(e)=>{e.stopPropagation();openFootnoteModal(d);}}
-                        title="توليد مرجع وإضافته للمراجع النهائية"
-                        style={{padding:"4px 10px",borderRadius:6,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>
-                        📝 توليد مرجع
-                      </button>
-                    </div>
-                  ))}
-
-                </div>
-                <button onClick={handleExport} style={{marginTop:12,width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>توليد {exportSelected.length} مرجع</button>
+                {(() => {
+                  const _q = exportSearch.trim().toLowerCase();
+                  const _filteredExportDocs = combinedDocs.filter(d => {
+                    if (exportTypeFilter && (d.category||"وثيقة أرشيفية") !== exportTypeFilter) return false;
+                    if (!_q) return true;
+                    return [d.title, d.author, d.archiveRef].some(v => (v||"").toString().toLowerCase().includes(_q));
+                  });
+                  return (
+                    <>
+                      <div style={{marginBottom:10}}>
+                        <label style={{display:"block",fontSize:12,fontWeight:600,marginBottom:4,color:"#475569"}}>ابحث في المصادر...</label>
+                        <input
+                          type="text"
+                          value={exportSearch}
+                          onChange={e=>setExportSearch(e.target.value)}
+                          placeholder="ابحث بالعنوان أو المؤلف أو الرقم الأرشيفي"
+                          style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl"}}
+                        />
+                      </div>
+                      <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+                        <button onClick={()=>setExportSelected(_filteredExportDocs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل</button>
+                        <button onClick={()=>setExportSelected(_filteredExportDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط</button>
+                        <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
+                        <select value={exportTypeFilter} onChange={e=>setExportTypeFilter(e.target.value)} style={{marginInlineStart:"auto",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
+                          <option value="">🏷️ كل الأنواع</option>
+                          {["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
+                        {_filteredExportDocs.length === 0
+                          ? <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>لا توجد نتائج مطابقة</div>
+                          : _filteredExportDocs.map(d=>(
+                          <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",fontSize:11}}>
+                            <label style={{display:"flex",alignItems:"center",gap:8,flex:1,cursor:"pointer",minWidth:0}}>
+                              <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
+                              <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
+                              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
+                              <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
+                            </label>
+                            <button
+                              onClick={(e)=>{e.stopPropagation();openFootnoteModal(d);}}
+                              title="توليد مرجع وإضافته للمراجع النهائية"
+                              style={{padding:"4px 10px",borderRadius:6,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>
+                              📝 توليد مرجع
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+                <button onClick={()=>{
+                  if (!exportSelected.length) { showNotif("اختر وثيقة واحدة على الأقل","error"); return; }
+                  const items = combinedDocs.filter(d=>exportSelected.includes(d.id)).map(d=>({doc:d, page:""}));
+                  setBulkFootnoteModal({ items, generated: null });
+                }} style={{marginTop:12,width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>توليد {exportSelected.length} مرجع</button>
               </div>
               <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>المراجع المُولَّدة</div>
