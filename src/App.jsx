@@ -3282,6 +3282,18 @@ ${docsContext}
                           {!isAnalyzing && (
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                               {/* ملخص */}
+                              {/* تصنيف الذكاء الاصطناعي داخل هيكل الأطروحة */}
+                              {(src.sectionName || src.subSectionName || src.classificationReason) && (
+                                <div style={{gridColumn:"1/-1",background:"#ecfeff",borderRadius:8,padding:12,border:"0.5px solid #a5f3fc"}}>
+                                  <div style={{fontSize:11,fontWeight:600,color:"#0e7490",marginBottom:6}}>🎯 تصنيف الذكاء الاصطناعي</div>
+                                  {src.chapterName && <div style={{fontSize:12,marginBottom:3}}><b>الفصل:</b> {src.chapterName}</div>}
+                                  {src.sectionName && <div style={{fontSize:12,marginBottom:3}}><b>المبحث:</b> {src.sectionName}</div>}
+                                  {src.subSectionName && <div style={{fontSize:12,marginBottom:3}}><b>الفقرة:</b> {src.subSectionName}</div>}
+                                  {src.classificationReason && <div style={{fontSize:11,color:"#475569",marginTop:5}}><b>السبب:</b> {src.classificationReason}</div>}
+                                  {src.classificationConfidence && <div style={{fontSize:10,color:"#0e7490",marginTop:3}}>مستوى الثقة: {src.classificationConfidence}</div>}
+                                </div>
+                              )}
+                              {/* ملخص */}
                               {src.summary && (
                                 <div style={{gridColumn:"1/-1",background:"#eff6ff",borderRadius:8,padding:12,border:"0.5px solid #bfdbfe"}}>
                                   <div style={{fontSize:11,fontWeight:600,color:"#3B82F6",marginBottom:5}}>📋 ملخص المصدر</div>
