@@ -2010,7 +2010,7 @@ ${docsContext}
     {id:"bibliography",  label:`المراجع النهائية (${bibliography.length})`,       icon:"📋"},
     {id:"defense",       label:"محاكي المناقشة",                                  icon:"🎓"},
     {id:"ai",            label:"مساعد ذكي",                                       icon:"🤖"},
-    {id:"telegram",      label:"تيليغرام",                                        icon:"✈️"},
+    {id:"supervisor",    label:"غرفة المشرف",                                     icon:"👨‍🏫"},
   ];
 
   return (
