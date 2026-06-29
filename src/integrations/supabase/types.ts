@@ -158,6 +158,27 @@ export type Database = {
         }
         Relationships: []
       }
+      deleted_base_docs: {
+        Row: {
+          base_doc_id: number
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          base_doc_id: number
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Update: {
+          base_doc_id?: number
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       library_sources: {
         Row: {
           analyzed: boolean | null
@@ -273,6 +294,7 @@ export type Database = {
           author: string | null
           category: string | null
           chapter_id: number | null
+          client_id: string | null
           college: string | null
           created_at: string
           degree: string | null
@@ -304,6 +326,7 @@ export type Database = {
           author?: string | null
           category?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           college?: string | null
           created_at?: string
           degree?: string | null
@@ -335,6 +358,7 @@ export type Database = {
           author?: string | null
           category?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           college?: string | null
           created_at?: string
           degree?: string | null
