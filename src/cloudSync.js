@@ -177,3 +177,125 @@ export function debounce(fn, ms = 600) {
     t = setTimeout(() => fn(...args), ms);
   };
 }
+
+// ==================== Phase 3b: library_sources + Storage ====================
+
+const BUCKET = "thesis-files";
+
+function libToRow(s, userId) {
+  return {
+    user_id: userId,
+    client_id: String(s.id),
+    file_name: s.fileName ?? null,
+    file_type: s.fileType ?? null,
+    file_size: s.fileSize ?? null,
+    upload_date: s.uploadDate ?? null,
+    status: s.status ?? null,
+    analyzed: !!s.analyzed,
+    title: s.title ?? null,
+    author: s.author ?? null,
+    year: s.year != null ? String(s.year) : null,
+    language: s.language ?? null,
+    source_type: s.sourceType ?? null,
+    chapter_id: s.chapterId ?? null,
+    section_id: s.sectionId ?? null,
+    sub_section_id: s.subSectionId ?? null,
+    priority: s.priority ?? null,
+    important_pages: s.importantPages ?? null,
+    summary: s.summary ?? null,
+    keywords: Array.isArray(s.keywords) ? s.keywords : [],
+    why_important: s.whyImportant ?? null,
+    how_to_use: s.howToUse ?? null,
+    key_points: Array.isArray(s.keyPoints) ? s.keyPoints : [],
+    storage_path: s.storagePath ?? null,
+    notes: s.notes ?? null,
+  };
+}
+
+function rowToLib(r) {
+  const cid = r.client_id;
+  const idNum = cid != null && /^-?\d+(\.\d+)?$/.test(cid) ? Number(cid) : cid;
+  return {
+    id: idNum,
+    fileName: r.file_name || "",
+    fileType: r.file_type || "",
+    fileSize: r.file_size || 0,
+    uploadDate: r.upload_date || "",
+    status: r.status || "",
+    analyzed: !!r.analyzed,
+    title: r.title || "",
+    author: r.author || "",
+    year: r.year || "",
+    language: r.language || "",
+    sourceType: r.source_type || "",
+    chapterId: r.chapter_id ?? null,
+    sectionId: r.section_id || "",
+    subSectionId: r.sub_section_id || "",
+    priority: r.priority || "★★",
+    importantPages: r.important_pages || "",
+    summary: r.summary || "",
+    keywords: r.keywords || [],
+    whyImportant: r.why_important || "",
+    howToUse: r.how_to_use || "",
+    keyPoints: r.key_points || [],
+    storagePath: r.storage_path || "",
+    notes: r.notes || "",
+    sections: [],
+  };
+}
+
+// Upload a File to thesis-files bucket. Returns storage_path or null.
+export async function uploadLibraryFile(file) {
+  const userId = await uid();
+  if (!userId || !file) return null;
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || undefined,
+    upsert: false,
+  });
+  if (error) { console.warn("[uploadLibraryFile]", error); return null; }
+  return path;
+}
+
+export async function getLibraryFileUrl(path) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+  if (error) { console.warn("[getLibraryFileUrl]", error); return null; }
+  return data?.signedUrl || null;
+}
+
+export async function deleteLibraryFile(path) {
+  if (!path) return;
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+export async function loadLibrary() {
+  const userId = await uid();
+  if (!userId) return [];
+  const { data, error } = await supabase
+    .from("library_sources")
+    .select("*")
+    .not("client_id", "is", null);
+  if (error) { console.warn("[loadLibrary]", error); return []; }
+  // Shared workspace dedupe by client_id, latest updated_at wins
+  const map = new Map();
+  for (const r of data || []) {
+    const prev = map.get(r.client_id);
+    if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) map.set(r.client_id, r);
+  }
+  return [...map.values()].map(rowToLib);
+}
+
+export async function syncLibrary(libraryArr) {
+  const userId = await uid();
+  if (!userId) return;
+  const rows = libraryArr.map(s => libToRow(s, userId));
+  if (rows.length) {
+    await supabase.from("library_sources").upsert(rows, { onConflict: "user_id,client_id" });
+  }
+  const keepIds = rows.map(r => r.client_id);
+  let del = supabase.from("library_sources").delete().eq("user_id", userId).not("client_id", "is", null);
+  if (keepIds.length) del = del.not("client_id", "in", `(${keepIds.map(id => `"${id}"`).join(",")})`);
+  await del;
+}
