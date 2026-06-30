@@ -3371,8 +3371,40 @@ ${docsContext}
                 <button onClick={()=>{navigator.clipboard.writeText(aiResult);showNotif("✅ تم النسخ!");}} style={{marginTop:12,padding:"7px 14px",borderRadius:8,background:"white",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ التحليل</button>
               </div>
             )}
+
+            {/* ===== المعرّف الأكاديمي للكيانات ===== */}
+            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginTop:18}}>
+              <div style={{fontWeight:700,color:"#0f172a",marginBottom:6,fontSize:14}}>🔎 المعرّف الأكاديمي (شخص / مكان / جهة)</div>
+              <p style={{color:"#64748b",fontSize:12,marginBottom:10}}>أدخل اسم شخصية أو مكان أو جهة — سيعطيك المساعد تعريفاً مكثّفاً في ثلاثة أسطر مع مصدر موثوق قابل للتحقق.</p>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <input value={entityQuery} onChange={e=>setEntityQuery(e.target.value)} placeholder="مثال: السير تشارلز بلجريف، ميناء البحرين، شركة نفط العراق (IPC)…" style={{flex:1,padding:"9px 14px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter")handleEntityLookup();}}/>
+                <button onClick={handleEntityLookup} disabled={entityLoading} style={{padding:"9px 18px",borderRadius:8,background:"#0f172a",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+                  {entityLoading?"⏳":"تعريف →"}
+                </button>
+              </div>
+              {entityLoading && <div style={{color:"#64748b",fontSize:12}}>جاري البحث عن تعريف موثوق…</div>}
+              {entityResult && !entityLoading && (
+                <div style={{background:"#f8fafc",borderRadius:8,padding:14,border:"0.5px solid #e2e8f0"}}>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{entityResult.name || entityQuery}</div>
+                  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.9,color:"#1e293b",marginBottom:10}}>{entityResult.definition || "—"}</div>
+                  {entityResult.source && (
+                    <div style={{fontSize:12,color:"#475569",borderTop:"0.5px solid #e2e8f0",paddingTop:8}}>
+                      <strong>المصدر:</strong> {entityResult.source.title || "—"}
+                      {entityResult.source.author ? ` — ${entityResult.source.author}` : ""}
+                      {entityResult.source.year ? ` (${entityResult.source.year})` : ""}
+                      {entityResult.source.url ? <> — <a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a></> : ""}
+                    </div>
+                  )}
+                  <button onClick={()=>{
+                    const txt = `${entityResult.name||entityQuery}\n${entityResult.definition||""}\nالمصدر: ${entityResult.source?.title||""} ${entityResult.source?.url||""}`.trim();
+                    navigator.clipboard.writeText(txt); showNotif("✅ تم النسخ!");
+                  }} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#0f172a",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
 
         {/* ===== LIBRARY ===== */}
         {page==="library" && (
