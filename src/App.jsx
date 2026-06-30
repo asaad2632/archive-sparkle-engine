@@ -1371,7 +1371,7 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
     setEntityResult(null);
     try {
       const data = await callLLM({
-        max_tokens: 800,
+        max_tokens: 1400,
         messages: [{
           role: "user",
           content: `أنت مساعد بحثي صارم لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
