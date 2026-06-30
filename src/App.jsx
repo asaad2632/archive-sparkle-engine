@@ -360,6 +360,14 @@ export default function App() {
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [notif, setNotif] = useState(null);
+  const [userEmail, setUserEmail] = useState("");
+  useEffect(()=>{
+    supabase.auth.getUser().then(({data})=>setUserEmail(data?.user?.email||""));
+  },[]);
+  const handleLogout = useCallback(async ()=>{
+    try { await supabase.auth.signOut(); } catch(e){}
+    window.location.href = "/auth";
+  },[]);
   const [exportFormat, setExportFormat] = useState("Chicago");
   const [exportSelected, setExportSelected] = useState([]);
   const [exportText, setExportText] = useState("");
