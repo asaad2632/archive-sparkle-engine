@@ -184,6 +184,7 @@ export type Database = {
           analyzed: boolean | null
           author: string | null
           chapter_id: number | null
+          client_id: string | null
           created_at: string
           file_name: string | null
           file_size: number | null
@@ -191,15 +192,19 @@ export type Database = {
           how_to_use: string | null
           id: string
           important_pages: string | null
+          key_points: Json | null
           keywords: string[] | null
           language: string | null
+          notes: string | null
           priority: string | null
           section_id: string | null
           source_type: string | null
           status: string | null
+          storage_path: string | null
           sub_section_id: string | null
           summary: string | null
           title: string | null
+          updated_at: string
           upload_date: string | null
           user_id: string | null
           why_important: string | null
@@ -209,6 +214,7 @@ export type Database = {
           analyzed?: boolean | null
           author?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           created_at?: string
           file_name?: string | null
           file_size?: number | null
@@ -216,15 +222,19 @@ export type Database = {
           how_to_use?: string | null
           id?: string
           important_pages?: string | null
+          key_points?: Json | null
           keywords?: string[] | null
           language?: string | null
+          notes?: string | null
           priority?: string | null
           section_id?: string | null
           source_type?: string | null
           status?: string | null
+          storage_path?: string | null
           sub_section_id?: string | null
           summary?: string | null
           title?: string | null
+          updated_at?: string
           upload_date?: string | null
           user_id?: string | null
           why_important?: string | null
@@ -234,6 +244,7 @@ export type Database = {
           analyzed?: boolean | null
           author?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           created_at?: string
           file_name?: string | null
           file_size?: number | null
@@ -241,15 +252,19 @@ export type Database = {
           how_to_use?: string | null
           id?: string
           important_pages?: string | null
+          key_points?: Json | null
           keywords?: string[] | null
           language?: string | null
+          notes?: string | null
           priority?: string | null
           section_id?: string | null
           source_type?: string | null
           status?: string | null
+          storage_path?: string | null
           sub_section_id?: string | null
           summary?: string | null
           title?: string | null
+          updated_at?: string
           upload_date?: string | null
           user_id?: string | null
           why_important?: string | null
