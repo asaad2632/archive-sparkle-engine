@@ -506,7 +506,7 @@ ${uploadedList}
                         {FILE_STATUSES.map(s => <option key={s.v} value={s.v}>{s.icon} {s.v}</option>)}
                       </select>
                       <button onClick={() => downloadFile(f)} style={{...btnGhost, background:"#dbeafe", color:"#1e40af"}}>📥 تحميل</button>
-                      <button onClick={() => confirmDelete(`حذف الملف "${f.fileName}"؟`, () => setFiles(p => p.filter(x => x.id !== f.id)))}
+                      <button onClick={() => confirmDelete(`حذف الملف "${f.fileName}"؟`, () => removeFileEntry(f))}
                         style={{...btnDanger, marginInlineStart:"auto"}}>🗑️ حذف</button>
                     </div>
                   </div>
