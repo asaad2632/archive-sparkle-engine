@@ -746,6 +746,14 @@ export default function App() {
     try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
   };
 
+  // Phase 3b: debounced library sync to cloud
+  React.useEffect(() => {
+    if (!libHydratedRef.current) return;
+    syncLibraryDebounced(library);
+  }, [library, syncLibraryDebounced]);
+
+
+
   // Build a structured view of the live `chapters` state for AI prompts.
   // Sub-sections are detected by trailing lowercase letter (e.g. "2-1a" under "2-1").
   const buildThesisStructure = () => {
