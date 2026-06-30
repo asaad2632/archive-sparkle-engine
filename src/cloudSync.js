@@ -83,15 +83,20 @@ export async function loadPhase3a(defaultChapters) {
   if (!userId) return null;
 
   const [chaptersRes, sourcesRes, delRes] = await Promise.all([
-    supabase.from("chapters").select("*").eq("user_id", userId).order("chapter_id"),
-    supabase.from("sources").select("*").eq("user_id", userId).not("client_id", "is", null),
-    supabase.from("deleted_base_docs").select("base_doc_id").eq("user_id", userId),
+    supabase.from("chapters").select("*").order("chapter_id"),
+    supabase.from("sources").select("*").not("client_id", "is", null),
+    supabase.from("deleted_base_docs").select("base_doc_id"),
   ]);
 
-  // Chapters: merge DB rows over defaults (by chapter_id). If none, return defaults.
+  // Chapters: merge DB rows over defaults (by chapter_id). Shared workspace —
+  // if multiple users edited the same chapter, take the most recently updated row.
   let chapters = defaultChapters.map(ch => ({ ...ch, sections: ch.sections.map(s => ({ ...s })) }));
   if (chaptersRes.data && chaptersRes.data.length) {
-    const byId = new Map(chaptersRes.data.map(r => [r.chapter_id, r]));
+    const byId = new Map();
+    for (const r of chaptersRes.data) {
+      const prev = byId.get(r.chapter_id);
+      if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) byId.set(r.chapter_id, r);
+    }
     chapters = chapters.map(ch => {
       const r = byId.get(ch.id);
       if (!r) return ch;
@@ -104,7 +109,15 @@ export async function loadPhase3a(defaultChapters) {
     });
   }
 
-  const userDocs = (sourcesRes.data || []).map(rowToDoc);
+  // User-added sources: dedupe across users by client_id (latest update wins).
+  const docMap = new Map();
+  for (const r of (sourcesRes.data || [])) {
+    const prev = docMap.get(r.client_id);
+    if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) docMap.set(r.client_id, r);
+  }
+  const userDocs = [...docMap.values()].map(rowToDoc);
+
+  // Deleted base docs: union across the workspace.
   const deletedBaseDocs = new Set((delRes.data || []).map(r => r.base_doc_id));
 
   return { chapters, userDocs, deletedBaseDocs };
