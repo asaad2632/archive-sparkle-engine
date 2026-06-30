@@ -4,6 +4,7 @@ import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
 import SupervisorRoom from "./SupervisorRoom";
 import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce } from "./cloudSync";
+import { supabase } from "@/integrations/supabase/client";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
