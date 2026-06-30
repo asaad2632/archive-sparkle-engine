@@ -1588,6 +1588,13 @@ ${docsContext || "لم يُعثر على مصادر مطابقة"}
     try { localStorage.setItem("acadarchiv_translations", JSON.stringify(updated)); } catch {}
   };
 
+  // Phase 3c: debounced cloud sync for bibliography / cards / translations / custom_formats
+  React.useEffect(() => { if (bibHydratedRef.current)   syncBibDebounced(bibliography);     }, [bibliography, syncBibDebounced]);
+  React.useEffect(() => { if (cardsHydratedRef.current) syncCardsDebounced(cards);          }, [cards, syncCardsDebounced]);
+  React.useEffect(() => { if (trHydratedRef.current)    syncTrDebounced(savedTranslations); }, [savedTranslations, syncTrDebounced]);
+  React.useEffect(() => { if (fmtHydratedRef.current)   syncFmtDebounced(customFormats);    }, [customFormats, syncFmtDebounced]);
+
+
   const runImageOcrTranslation = async (imageDataUrls) => {
     setTranslatorLoading(true);
     setTranslatedResult("");
