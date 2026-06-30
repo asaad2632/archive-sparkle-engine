@@ -397,6 +397,10 @@ export default function App() {
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
+  const [urlPreview, setUrlPreview] = useState(null); // {title,sourceType,relevance,footnoteSummary,raw}
+  const [entityQuery, setEntityQuery] = useState("");
+  const [entityLoading, setEntityLoading] = useState(false);
+  const [entityResult, setEntityResult] = useState(null); // {definition, source}
   const [tgMode, setTgMode] = useState(false);
   const [tgQuery, setTgQuery] = useState("");
   const [tgResults, setTgResults] = useState([]);
