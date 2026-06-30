@@ -190,18 +190,25 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
       e.target.value = "";
       return;
     }
-    // Store as data URL locally — NEVER sent to AI
+    // Keep dataURL for instant local preview, plus raw File for cloud upload
     const reader = new FileReader();
-    reader.onload = (ev) => setPendingFile({ name: f.name, size: f.size, dataUrl: ev.target.result });
+    reader.onload = (ev) => setPendingFile({ name: f.name, size: f.size, type: f.type, dataUrl: ev.target.result, file: f });
     reader.readAsDataURL(f);
   };
-  const uploadFile = () => {
+  const uploadFile = async () => {
     if (!pendingFile) { notify("⚠️ اختر ملفاً أولاً", "error"); return; }
+    notify("⏳ جاري رفع الملف...");
+    let storagePath = null;
+    try {
+      if (pendingFile.file) storagePath = await uploadSupervisorFile(pendingFile.file);
+    } catch (err) { console.warn("[uploadSupervisorFile]", err); }
     setFiles(p => [...p, {
       id: uid(),
       fileName: pendingFile.name,
+      fileType: pendingFile.type || "",
       size: pendingFile.size,
       dataUrl: pendingFile.dataUrl,
+      storagePath: storagePath || "",
       chapter: fForm.chapter,
       version: fForm.version || "النسخة الأولى",
       date: fForm.date || todayISO(),
@@ -213,13 +220,23 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
     setFForm({ chapter:"1", version:"", date: todayISO(), note:"" });
     const input = document.getElementById("supervisor-file-input");
     if (input) input.value = "";
-    notify("✅ تم رفع الفصل للمراجعة (الملف محفوظ محلياً ولن يُرسل لأي ذكاء اصطناعي)");
+    notify(storagePath
+      ? "✅ تم رفع الفصل للمراجعة ومشاركته مع المشرف"
+      : "✅ تم حفظ الفصل محلياً (تعذّر الرفع للسحابة)");
   };
-  const downloadFile = (f) => {
+  const downloadFile = async (f) => {
+    let href = f.dataUrl;
+    if (!href && f.storagePath) href = await getSupervisorFileUrl(f.storagePath);
+    if (!href) { notify("⚠️ تعذّر الحصول على الملف", "error"); return; }
     const a = document.createElement("a");
-    a.href = f.dataUrl;
+    a.href = href;
     a.download = f.fileName;
+    if (!f.dataUrl) a.target = "_blank";
     document.body.appendChild(a); a.click(); a.remove();
+  };
+  const removeFileEntry = async (f) => {
+    if (f.storagePath) { try { await deleteSupervisorFile(f.storagePath); } catch {} }
+    setFiles(p => p.filter(x => x.id !== f.id));
   };
   const filesByChapter = useMemo(() => {
     const map = {};
