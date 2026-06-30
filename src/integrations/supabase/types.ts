@@ -20,12 +20,14 @@ export type Database = {
           author: string | null
           bib_entry: string | null
           category: string | null
+          client_id: string | null
           created_at: string
           doc_id: string | null
           id: string
           section: string | null
           sort_key: string | null
           title: string | null
+          updated_at: string
           user_id: string | null
           year: string | null
         }
@@ -34,12 +36,14 @@ export type Database = {
           author?: string | null
           bib_entry?: string | null
           category?: string | null
+          client_id?: string | null
           created_at?: string
           doc_id?: string | null
           id?: string
           section?: string | null
           sort_key?: string | null
           title?: string | null
+          updated_at?: string
           user_id?: string | null
           year?: string | null
         }
@@ -48,12 +52,14 @@ export type Database = {
           author?: string | null
           bib_entry?: string | null
           category?: string | null
+          client_id?: string | null
           created_at?: string
           doc_id?: string | null
           id?: string
           section?: string | null
           sort_key?: string | null
           title?: string | null
+          updated_at?: string
           user_id?: string | null
           year?: string | null
         }
@@ -63,6 +69,7 @@ export type Database = {
         Row: {
           ai_content: string | null
           chapter_id: number | null
+          client_id: string | null
           created_at: string
           date: string | null
           id: string
@@ -72,11 +79,13 @@ export type Database = {
           tags: string[] | null
           title: string | null
           topic: string | null
+          updated_at: string
           user_id: string | null
         }
         Insert: {
           ai_content?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           created_at?: string
           date?: string | null
           id?: string
@@ -86,11 +95,13 @@ export type Database = {
           tags?: string[] | null
           title?: string | null
           topic?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Update: {
           ai_content?: string | null
           chapter_id?: number | null
+          client_id?: string | null
           created_at?: string
           date?: string | null
           id?: string
@@ -100,6 +111,7 @@ export type Database = {
           tags?: string[] | null
           title?: string | null
           topic?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Relationships: []
@@ -136,24 +148,30 @@ export type Database = {
       }
       custom_formats: {
         Row: {
+          client_id: string | null
           created_at: string
           id: string
           name: string | null
           templates: Json | null
+          updated_at: string
           user_id: string | null
         }
         Insert: {
+          client_id?: string | null
           created_at?: string
           id?: string
           name?: string | null
           templates?: Json | null
+          updated_at?: string
           user_id?: string | null
         }
         Update: {
+          client_id?: string | null
           created_at?: string
           id?: string
           name?: string | null
           templates?: Json | null
+          updated_at?: string
           user_id?: string | null
         }
         Relationships: []
@@ -279,6 +297,7 @@ export type Database = {
           created_at: string
           id: string
           section_id: string | null
+          updated_at: string
           user_id: string | null
           version: number | null
         }
@@ -288,6 +307,7 @@ export type Database = {
           created_at?: string
           id?: string
           section_id?: string | null
+          updated_at?: string
           user_id?: string | null
           version?: number | null
         }
@@ -297,6 +317,7 @@ export type Database = {
           created_at?: string
           id?: string
           section_id?: string | null
+          updated_at?: string
           user_id?: string | null
           version?: number | null
         }
@@ -610,6 +631,7 @@ export type Database = {
       }
       translations: {
         Row: {
+          client_id: string | null
           created_at: string
           doc_meta: Json | null
           file_name: string | null
@@ -618,9 +640,11 @@ export type Database = {
           original_text: string | null
           saved_at: string | null
           translation: string | null
+          updated_at: string
           user_id: string | null
         }
         Insert: {
+          client_id?: string | null
           created_at?: string
           doc_meta?: Json | null
           file_name?: string | null
@@ -629,9 +653,11 @@ export type Database = {
           original_text?: string | null
           saved_at?: string | null
           translation?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Update: {
+          client_id?: string | null
           created_at?: string
           doc_meta?: Json | null
           file_name?: string | null
@@ -640,6 +666,7 @@ export type Database = {
           original_text?: string | null
           saved_at?: string | null
           translation?: string | null
+          updated_at?: string
           user_id?: string | null
         }
         Relationships: []

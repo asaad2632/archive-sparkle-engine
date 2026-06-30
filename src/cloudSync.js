@@ -299,3 +299,180 @@ export async function syncLibrary(libraryArr) {
   if (keepIds.length) del = del.not("client_id", "in", `(${keepIds.map(id => `"${id}"`).join(",")})`);
   await del;
 }
+
+// ==================== Phase 3c: bibliography / cards / translations / custom_formats / researcher_analysis ====================
+
+// Generic shared-workspace dedupe loader (by client_id, latest updated_at wins).
+async function loadByClientId(table) {
+  const userId = await uid();
+  if (!userId) return [];
+  const { data, error } = await supabase.from(table).select("*").not("client_id", "is", null);
+  if (error) { console.warn(`[load:${table}]`, error); return []; }
+  const map = new Map();
+  for (const r of data || []) {
+    const prev = map.get(r.client_id);
+    if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) map.set(r.client_id, r);
+  }
+  return [...map.values()];
+}
+
+// Generic set-based sync: upsert current rows + delete rows whose client_id is gone.
+async function syncSet(table, rows) {
+  const userId = await uid();
+  if (!userId) return;
+  if (rows.length) await supabase.from(table).upsert(rows, { onConflict: "user_id,client_id" });
+  const keepIds = rows.map(r => r.client_id);
+  let del = supabase.from(table).delete().eq("user_id", userId).not("client_id", "is", null);
+  if (keepIds.length) del = del.not("client_id", "in", `(${keepIds.map(id => `"${id}"`).join(",")})`);
+  await del;
+}
+
+// ---------- bibliography ----------
+function bibToRow(b, userId) {
+  return {
+    user_id: userId,
+    client_id: String(b.id),
+    doc_id: b.docId != null ? String(b.docId) : null,
+    section: b.section ?? null,
+    author: b.author ?? null,
+    title: b.title ?? null,
+    year: b.year != null ? String(b.year) : null,
+    category: b.category ?? null,
+    bib_entry: b.bibEntry ?? null,
+    sort_key: b.sortKey ?? null,
+    added_at: b.addedAt ?? null,
+  };
+}
+function rowToBib(r) {
+  const cid = r.client_id;
+  const idNum = cid != null && /^-?\d+(\.\d+)?$/.test(cid) ? Number(cid) : cid;
+  const docId = r.doc_id != null && /^-?\d+(\.\d+)?$/.test(r.doc_id) ? Number(r.doc_id) : r.doc_id;
+  return {
+    id: idNum, docId, section: r.section || "", author: r.author || "",
+    title: r.title || "", year: r.year || "", category: r.category || "",
+    bibEntry: r.bib_entry || "", sortKey: r.sort_key || "", addedAt: r.added_at || "",
+  };
+}
+export async function loadBibliography() { return (await loadByClientId("bibliography")).map(rowToBib); }
+export async function syncBibliography(arr) {
+  const userId = await uid();
+  if (!userId) return;
+  await syncSet("bibliography", arr.map(b => bibToRow(b, userId)));
+}
+
+// ---------- cards ----------
+function cardToRow(c, userId) {
+  return {
+    user_id: userId,
+    client_id: String(c.id),
+    title: c.title ?? null,
+    topic: c.topic ?? null,
+    date: c.date ?? null,
+    chapter_id: c.chapterId ?? null,
+    section_id: c.sectionId ?? null,
+    tags: Array.isArray(c.tags) ? c.tags : [],
+    notes: c.notes ?? null,
+    ai_content: c.aiContent ?? null,
+    related_doc_ids: Array.isArray(c.relatedDocIds) ? c.relatedDocIds.map(String) : [],
+  };
+}
+function rowToCard(r) {
+  const cid = r.client_id;
+  const idNum = cid != null && /^-?\d+(\.\d+)?$/.test(cid) ? Number(cid) : cid;
+  return {
+    id: idNum, title: r.title || "", topic: r.topic || "", date: r.date || "",
+    chapterId: r.chapter_id ?? null, sectionId: r.section_id || "",
+    tags: r.tags || [], notes: r.notes || "", aiContent: r.ai_content || "",
+    relatedDocIds: (r.related_doc_ids || []).map(x => /^-?\d+(\.\d+)?$/.test(x) ? Number(x) : x),
+    createdAt: r.added_at || "",
+  };
+}
+export async function loadCards() { return (await loadByClientId("cards")).map(rowToCard); }
+export async function syncCards(arr) {
+  const userId = await uid();
+  if (!userId) return;
+  await syncSet("cards", arr.map(c => cardToRow(c, userId)));
+}
+
+// ---------- translations ----------
+function trToRow(t, userId) {
+  return {
+    user_id: userId,
+    client_id: String(t.id),
+    file_name: t.fileName ?? null,
+    original_text: t.originalText ?? null,
+    translation: t.translation ?? null,
+    key_points: Array.isArray(t.keyPoints) ? t.keyPoints : (t.keyPoints || []),
+    doc_meta: t.docMeta ?? null,
+    saved_at: t.savedAt ?? null,
+  };
+}
+function rowToTr(r) {
+  const cid = r.client_id;
+  const idNum = cid != null && /^-?\d+(\.\d+)?$/.test(cid) ? Number(cid) : cid;
+  return {
+    id: idNum, fileName: r.file_name || "", originalText: r.original_text || "",
+    translation: r.translation || "", keyPoints: r.key_points || [],
+    docMeta: r.doc_meta || null, savedAt: r.saved_at || "",
+  };
+}
+export async function loadTranslations() { return (await loadByClientId("translations")).map(rowToTr); }
+export async function syncTranslations(arr) {
+  const userId = await uid();
+  if (!userId) return;
+  await syncSet("translations", arr.map(t => trToRow(t, userId)));
+}
+
+// ---------- custom_formats ----------
+function fmtToRow(f, userId, idx) {
+  return {
+    user_id: userId,
+    client_id: f.client_id ? String(f.client_id) : `fmt-${idx}-${f.name || ""}`,
+    name: f.name ?? null,
+    templates: f.templates ?? {},
+  };
+}
+function rowToFmt(r) { return { name: r.name || "", templates: r.templates || {}, client_id: r.client_id }; }
+export async function loadCustomFormats() { return (await loadByClientId("custom_formats")).map(rowToFmt); }
+export async function syncCustomFormats(arr) {
+  const userId = await uid();
+  if (!userId) return;
+  const rows = arr.map((f, i) => fmtToRow(f, userId, i));
+  await syncSet("custom_formats", rows);
+}
+
+// ---------- researcher_analysis (keyed by chapter_id/section_id) ----------
+export async function loadResearcherAnalysis() {
+  const userId = await uid();
+  if (!userId) return [];
+  const { data, error } = await supabase.from("researcher_analysis").select("*");
+  if (error) { console.warn("[loadResearcherAnalysis]", error); return []; }
+  // dedupe by (chapter_id||section_id), latest wins
+  const map = new Map();
+  for (const r of data || []) {
+    const k = `${r.chapter_id ?? ""}::${r.section_id ?? ""}`;
+    const prev = map.get(k);
+    if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) map.set(k, r);
+  }
+  return [...map.values()].map(r => ({
+    chapterId: r.chapter_id ?? null,
+    sectionId: r.section_id || "",
+    content: r.content || "",
+    version: r.version ?? 1,
+  }));
+}
+export async function syncResearcherAnalysis(arr) {
+  const userId = await uid();
+  if (!userId) return;
+  // wipe + insert is simplest (small dataset)
+  await supabase.from("researcher_analysis").delete().eq("user_id", userId);
+  if (arr.length) {
+    await supabase.from("researcher_analysis").insert(arr.map(a => ({
+      user_id: userId,
+      chapter_id: a.chapterId ?? null,
+      section_id: a.sectionId || null,
+      content: a.content || "",
+      version: a.version ?? 1,
+    })));
+  }
+}
