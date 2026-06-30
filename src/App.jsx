@@ -397,6 +397,10 @@ export default function App() {
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
+  const [urlPreview, setUrlPreview] = useState(null); // {title,sourceType,relevance,footnoteSummary,raw}
+  const [entityQuery, setEntityQuery] = useState("");
+  const [entityLoading, setEntityLoading] = useState(false);
+  const [entityResult, setEntityResult] = useState(null); // {definition, source}
   const [tgMode, setTgMode] = useState(false);
   const [tgQuery, setTgQuery] = useState("");
   const [tgResults, setTgResults] = useState([]);
@@ -1107,7 +1111,7 @@ ${JSON.stringify(thesisStructure, null, 2)}
     const q = libFilter.query.toLowerCase();
     if (q && !s.title?.toLowerCase().includes(q) && !s.author?.toLowerCase().includes(q) && !s.fileName?.toLowerCase().includes(q) && !(s.keywords||[]).join(" ").toLowerCase().includes(q)) return false;
     if (libFilter.chapterId && s.chapterId !== parseInt(libFilter.chapterId)) return false;
-    if (libFilter.category && s.sourceType !== libFilter.category) return false;
+    if (libFilter.category && (s.sourceType || s.category) !== libFilter.category) return false;
     if (libFilter.priority && s.priority !== libFilter.priority) return false;
     return true;
   });
@@ -1199,7 +1203,9 @@ JSON المطلوب (أعده فقط بدون backticks):
   "url": "${urlImport}",
   "visitDate": "${new Date().toLocaleDateString("ar-IQ")}",
   "notes": "ملاحظة مختصرة",
-  "keywords": "كلمات مفتاحية"
+  "keywords": "كلمات مفتاحية",
+  "relevance": "مدى صلة المصدر بأطروحة الخليج العربي في الحرب العالمية الثانية 1939-1945 (سطر أو سطران)",
+  "footnoteSummary": "ملخص مقترح للهامش/الحاشية (سطران-ثلاثة) يصلح للاقتباس الأكاديمي"
 }
 اكتشف النوع تلقائياً من خصائص الصفحة (مجال، عناصر بيانات وصفية، إلخ).`
           }]
@@ -1213,20 +1219,15 @@ JSON المطلوب (أعده فقط بدون backticks):
         parsed.sourceType = detectedType;
         parsed.category   = detectedType;
         setUrlResult(parsed);
-        setAddForm(prev => ({
-          ...prev,
-          ...parsed,
+        // فتح نافذة المعاينة الذكية قبل الحفظ النهائي
+        setUrlPreview({
           title: parsed.title || "",
-          author: parsed.author || "",
-          year: parsed.year || "",
-          archiveRef: parsed.archiveRef || "",
-          category: detectedType,
           sourceType: detectedType,
-          notes: parsed.notes || "",
-          keywords: parsed.keywords || "",
-        }));
-        setPage("add");
-        showNotif(`✅ تم استخراج بيانات المصدر (${detectedType}) — راجع النموذج وأكمل البيانات`);
+          relevance: parsed.relevance || "—",
+          footnoteSummary: parsed.footnoteSummary || parsed.notes || "—",
+          raw: parsed,
+        });
+        showNotif(`✅ تم تحليل الرابط (${detectedType}) — راجع المعاينة قبل الحفظ`);
 
       } catch {
         showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
@@ -1235,6 +1236,66 @@ JSON المطلوب (أعده فقط بدون backticks):
       showNotif("حدث خطأ في الاتصال", "error");
     }
     setUrlLoading(false);
+  };
+
+  // تأكيد الحفظ من نافذة معاينة الرابط — يملأ النموذج ويفتح صفحة الإضافة
+  const confirmUrlPreview = () => {
+    if (!urlPreview) return;
+    const parsed = urlPreview.raw || {};
+    const detectedType = urlPreview.sourceType || parsed.sourceType || "وثيقة أرشيفية";
+    setAddForm(prev => ({
+      ...prev,
+      ...parsed,
+      title: parsed.title || urlPreview.title || "",
+      author: parsed.author || "",
+      year: parsed.year || "",
+      archiveRef: parsed.archiveRef || "",
+      category: detectedType,
+      sourceType: detectedType,
+      notes: urlPreview.footnoteSummary || parsed.notes || "",
+      keywords: parsed.keywords || "",
+    }));
+    setUrlPreview(null);
+    setPage("add");
+    showNotif("✅ تم نقل البيانات إلى نموذج الإضافة");
+  };
+
+  // ===== المعرّف الأكاديمي للكيانات (شخص/مكان/جهة) =====
+  const handleEntityLookup = async () => {
+    const q = entityQuery.trim();
+    if (!q) return;
+    setEntityLoading(true);
+    setEntityResult(null);
+    try {
+      const data = await callLLM({
+        max_tokens: 700,
+        messages: [{
+          role: "user",
+          content: `أنت مساعد بحثي لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
+الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان التالي (شخص أو مكان أو جهة): "${q}".
+
+أجب بصيغة JSON فقط بدون أي شرح إضافي وبدون code fences:
+{
+  "name": "${q}",
+  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي والحرب العالمية الثانية إن أمكن",
+  "source": {
+    "title": "اسم المرجع الموثوق",
+    "author": "المؤلف أو الجهة",
+    "year": "السنة إن وُجدت",
+    "url": "رابط قابل للتحقق إن وُجد (موسوعة بريتانيكا، QDL، الأرشيف البريطاني، دراسة محكّمة…)"
+  }
+}`
+        }]
+      });
+      const text = data.content?.map(c=>c.text||"").join("") || "{}";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const m = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : clean);
+      setEntityResult(parsed);
+    } catch (e) {
+      showNotif("⚠️ تعذّر استخراج التعريف — حاول مرة أخرى", "error");
+    }
+    setEntityLoading(false);
   };
 
   // محرك البحث في التليغرام (محاكاة ذكية بـ Claude)
@@ -2232,6 +2293,37 @@ ${docsContext}
           </div>
         </div>
       )}
+
+      {/* ===== MODAL: معاينة استخراج الرابط الذكي ===== */}
+      {urlPreview && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:620,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>🔗 معاينة المصدر المستخرَج</div>
+              <button onClick={()=>setUrlPreview(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
+            </div>
+            <div style={{display:"grid",gap:10,fontSize:13,marginBottom:14}}>
+              <div><strong>العنوان:</strong> <input value={urlPreview.title} onChange={e=>setUrlPreview(p=>({...p,title:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}/></div>
+              <div><strong>نوع المصدر:</strong>
+                <select value={urlPreview.sourceType} onChange={e=>setUrlPreview(p=>({...p,sourceType:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}>
+                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div><strong>الصلة بالأطروحة:</strong>
+                <textarea value={urlPreview.relevance} onChange={e=>setUrlPreview(p=>({...p,relevance:e.target.value}))} rows={2} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
+              </div>
+              <div><strong>ملخص الحاشية المقترح:</strong>
+                <textarea value={urlPreview.footnoteSummary} onChange={e=>setUrlPreview(p=>({...p,footnoteSummary:e.target.value}))} rows={3} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setUrlPreview(null)} style={{padding:"8px 16px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إلغاء</button>
+              <button onClick={confirmUrlPreview} style={{padding:"8px 16px",borderRadius:8,background:"#10b981",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>✅ تأكيد ومتابعة الإضافة</button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ===== MODAL: توليد هوامش متعددة ===== */}
       {bulkFootnoteModal && (
@@ -3310,8 +3402,40 @@ ${docsContext}
                 <button onClick={()=>{navigator.clipboard.writeText(aiResult);showNotif("✅ تم النسخ!");}} style={{marginTop:12,padding:"7px 14px",borderRadius:8,background:"white",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ التحليل</button>
               </div>
             )}
+
+            {/* ===== المعرّف الأكاديمي للكيانات ===== */}
+            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginTop:18}}>
+              <div style={{fontWeight:700,color:"#0f172a",marginBottom:6,fontSize:14}}>🔎 المعرّف الأكاديمي (شخص / مكان / جهة)</div>
+              <p style={{color:"#64748b",fontSize:12,marginBottom:10}}>أدخل اسم شخصية أو مكان أو جهة — سيعطيك المساعد تعريفاً مكثّفاً في ثلاثة أسطر مع مصدر موثوق قابل للتحقق.</p>
+              <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <input value={entityQuery} onChange={e=>setEntityQuery(e.target.value)} placeholder="مثال: السير تشارلز بلجريف، ميناء البحرين، شركة نفط العراق (IPC)…" style={{flex:1,padding:"9px 14px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter")handleEntityLookup();}}/>
+                <button onClick={handleEntityLookup} disabled={entityLoading} style={{padding:"9px 18px",borderRadius:8,background:"#0f172a",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+                  {entityLoading?"⏳":"تعريف →"}
+                </button>
+              </div>
+              {entityLoading && <div style={{color:"#64748b",fontSize:12}}>جاري البحث عن تعريف موثوق…</div>}
+              {entityResult && !entityLoading && (
+                <div style={{background:"#f8fafc",borderRadius:8,padding:14,border:"0.5px solid #e2e8f0"}}>
+                  <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{entityResult.name || entityQuery}</div>
+                  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.9,color:"#1e293b",marginBottom:10}}>{entityResult.definition || "—"}</div>
+                  {entityResult.source && (
+                    <div style={{fontSize:12,color:"#475569",borderTop:"0.5px solid #e2e8f0",paddingTop:8}}>
+                      <strong>المصدر:</strong> {entityResult.source.title || "—"}
+                      {entityResult.source.author ? ` — ${entityResult.source.author}` : ""}
+                      {entityResult.source.year ? ` (${entityResult.source.year})` : ""}
+                      {entityResult.source.url ? <> — <a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a></> : ""}
+                    </div>
+                  )}
+                  <button onClick={()=>{
+                    const txt = `${entityResult.name||entityQuery}\n${entityResult.definition||""}\nالمصدر: ${entityResult.source?.title||""} ${entityResult.source?.url||""}`.trim();
+                    navigator.clipboard.writeText(txt); showNotif("✅ تم النسخ!");
+                  }} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#0f172a",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ</button>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
 
         {/* ===== LIBRARY ===== */}
         {page==="library" && (
