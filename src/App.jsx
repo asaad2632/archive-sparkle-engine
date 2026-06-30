@@ -3318,8 +3318,13 @@ ${docsContext}
                   </label>
                 </div>
               </div>
-              <div style={{display:"flex",gap:10,marginTop:16}}>
+              <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
                 <button onClick={handleAddDoc} style={{padding:"9px 22px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>إضافة المصدر</button>
+                {(addForm.category==="كتاب عربي" || addForm.category==="كتاب أجنبي") && (
+                  <button onClick={extractBookMetadata} disabled={bookExtractLoading} style={{padding:"9px 16px",borderRadius:8,background:"#fef3c7",color:"#92400e",border:"0.5px solid #fde68a",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>
+                    {bookExtractLoading ? "⏳ جاري الاستخراج..." : "🪄 استخراج تلقائي لبيانات الكتاب"}
+                  </button>
+                )}
                 <button onClick={()=>setAddForm(EMPTY_ADD_FORM)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>مسح</button>
                 <button onClick={()=>{setUrlImport(""); setPage("url_import");}} style={{padding:"9px 16px",borderRadius:8,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>🔗 استيراد من رابط</button>
               </div>
