@@ -1371,26 +1371,34 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
     setEntityResult(null);
     try {
       const data = await callLLM({
-        max_tokens: 800,
+        max_tokens: 1400,
         messages: [{
           role: "user",
           content: `أنت مساعد بحثي صارم لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
-الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان: "${q}".
+الباحث يطلب تعريفاً أكاديمياً موثوقاً للكيان: "${q}".
 
-قاعدة صارمة لمنع الهلوسة:
-- لا تخترع أي مصدر أو مؤلف أو رابط مطلقاً.
-- لا تذكر مصدراً إلا إذا كنت متيقناً من وجوده الفعلي وقابليته للتحقق (موسوعة بريتانيكا، Qatar Digital Library، الأرشيف البريطاني The National Archives UK، JSTOR، Oxford Reference، كتاب أكاديمي معروف بمؤلفه ودار نشره).
-- إن لم يتوفر مصدر يقيني قابل للتحقق فاضبط "verifiable": false واترك حقول المصدر فارغة ("") ولا تضع رابطاً وهمياً.
-- الرابط — إن وُجد — يجب أن يكون رابطاً حقيقياً معروفاً لديك (لا تخمّن مسارات URL).
+متطلبات التعريف:
+- اكتب تعريفاً مكثفاً في **ثمانية أسطر بالعربية الفصحى** بدقة أكاديمية عالية.
+- اربط الكيان بسياقه التاريخي وبمنطقة الخليج العربي خلال 1939-1945 إن أمكن.
+- لا تستخدم حشواً أو عبارات إنشائية؛ كل سطر يحمل معلومة جوهرية موثّقة.
+
+سياسة الاستشهاد (صارمة جداً — لمنع الهلوسة):
+- يُمنع منعاً باتاً اختراع أي مصدر أو مؤلف أو رابط.
+- يُمنع الاستشهاد بمقالات ويب عامة، مدوّنات، ويكيبيديا، مواقع إخبارية، أو روابط مولّدة.
+- المصادر المقبولة **فقط**: كتب أكاديمية محكّمة، مجلات علمية محكّمة (Journals)، أو رسائل/أطاريح جامعية (Theses/Dissertations) — معروفة بمؤلفها ودار نشرها/جامعتها وسنتها.
+- إن لم تكن متيقّناً 100% من وجود مصدر أكاديمي محكّم قابل للتحقق، اضبط "verifiable": false واترك حقول المصدر فارغة تماماً ("") ولا تضع أي رابط.
+- لا تضع حقل url إلا إذا كان رابطاً أكاديمياً حقيقياً معروفاً (JSTOR، Oxford Academic، Cambridge Core، Brill، dar.aucegypt، QDL، The National Archives UK). خلاف ذلك اتركه "".
 
 أعد JSON خالصاً فقط بدون code fences:
 {
   "name": "${q}",
-  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي 1939-1945 إن أمكن",
+  "definition": "تعريف من ثمانية أسطر بالعربية الفصحى، دقيق أكاديمياً، يربط الكيان بسياق الخليج العربي 1939-1945 إن أمكن",
   "verifiable": true_or_false,
+  "sourceType": "book" | "journal" | "thesis" | "",
   "source": {
     "title": "",
     "author": "",
+    "publisher": "",
     "year": "",
     "url": ""
   }
@@ -1401,12 +1409,14 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
       const clean = text.replace(/```json|```/g,"").trim();
       const m = clean.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(m ? m[0] : clean);
-      // تنظيف نهائي: لو verifiable=false أو لا يوجد رابط — أزل بيانات المصدر تماماً
-      const url = parsed?.source?.url || "";
-      const looksReal = /^https?:\/\/[^\s]+\.[^\s]+/.test(url);
-      if (parsed.verifiable === false || !looksReal) {
+      // فلترة صارمة: نقبل فقط book/journal/thesis مع مؤلف وعنوان، وإلا نُسقط المصدر كلياً
+      const st = (parsed?.sourceType || "").toLowerCase();
+      const hasCore = parsed?.source?.title && parsed?.source?.author;
+      const academicType = ["book","journal","thesis"].includes(st);
+      if (parsed.verifiable === false || !academicType || !hasCore) {
         parsed.verifiable = false;
         parsed.source = null;
+        parsed.sourceType = "";
       }
       setEntityResult(parsed);
     } catch (e) {
@@ -2581,28 +2591,33 @@ ${docsContext}
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",color:"white",padding:"0 16px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:60}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:24}}>🗂️</span>
-            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
-          </div>
-          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",marginLeft:6}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minHeight:60,paddingTop:6,paddingBottom:6}}>
+          {/* Left column (visual top-left): Logout above AI model dropdown */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,order:2}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              {userEmail && (
+                <span style={{fontSize:10,color:"#e2e8f0",opacity:0.9,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>👤 {userEmail}</span>
+              )}
+              <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
+                🚪 خروج
+              </button>
+            </div>
+            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي / الأدوات" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",maxWidth:220}}>
               {AI_MODELS.map(m => <option key={m.id} value={m.id} style={{color:"#1e293b"}}>🤖 {m.label}</option>)}
             </select>
+          </div>
+          {/* Center: nav icons */}
+          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center",order:1,flex:1,justifyContent:"center"}}>
             {navItems.map(n=>(
               <button key={n.id} onClick={()=>setPage(n.id)} style={{background:page===n.id?"rgba(255,255,255,0.2)":"transparent",border:"none",color:"white",padding:"5px 9px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",alignItems:"center",gap:3}}>
                 <span>{n.icon}</span><span style={{display:"none"}} className="nav-label">{n.label}</span>
               </button>
             ))}
-            {userEmail && (
-              <span style={{fontSize:11,color:"#e2e8f0",marginRight:8,marginLeft:4,opacity:0.9,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>
-                👤 {userEmail}
-              </span>
-            )}
-            <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600,marginRight:4}}>
-              🚪 خروج
-            </button>
+          </div>
+          {/* Right (visual): brand */}
+          <div style={{display:"flex",alignItems:"center",gap:10,order:0}}>
+            <span style={{fontSize:24}}>🗂️</span>
+            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
           </div>
         </div>
         {/* nav labels row */}
@@ -3618,16 +3633,17 @@ ${docsContext}
                 <div style={{background:"#f8fafc",borderRadius:8,padding:14,border:"0.5px solid #e2e8f0"}}>
                   <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{entityResult.name || entityQuery}</div>
                   <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.9,color:"#1e293b",marginBottom:10}}>{entityResult.definition || "—"}</div>
-                  {entityResult.source && entityResult.source.url ? (
+                  {entityResult.source && entityResult.source.title && entityResult.source.author ? (
                     <div style={{fontSize:12,color:"#475569",borderTop:"0.5px solid #e2e8f0",paddingTop:8}}>
-                      <strong>المصدر:</strong> {entityResult.source.title || "—"}
-                      {entityResult.source.author ? ` — ${entityResult.source.author}` : ""}
+                      <strong>المصدر الأكاديمي{entityResult.sourceType ? ` (${entityResult.sourceType==="book"?"كتاب":entityResult.sourceType==="journal"?"مجلة محكّمة":"رسالة جامعية"})` : ""}:</strong>{" "}
+                      {entityResult.source.author} — <em>{entityResult.source.title}</em>
+                      {entityResult.source.publisher ? `, ${entityResult.source.publisher}` : ""}
                       {entityResult.source.year ? ` (${entityResult.source.year})` : ""}
-                      {" — "}<a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a>
+                      {entityResult.source.url ? <>{" — "}<a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a></> : null}
                     </div>
                   ) : (
                     <div style={{fontSize:12,color:"#b45309",background:"#fef3c7",borderRadius:6,padding:"8px 10px",borderTop:"0.5px solid #fde68a"}}>
-                      ⚠️ لا يوجد مصدر موثّق قابل للتحقق — استخدم التعريف للاسترشاد فقط ولا تستشهد به أكاديمياً قبل التحقق المستقل.
+                      ⚠️ No credible academic source available for this entity — لا يوجد مصدر أكاديمي موثّق (كتاب/مجلة محكّمة/رسالة جامعية) قابل للتحقق لهذا الكيان.
                     </div>
                   )}
                   <button onClick={()=>{
