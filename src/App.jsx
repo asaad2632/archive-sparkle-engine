@@ -1371,21 +1371,28 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
     setEntityResult(null);
     try {
       const data = await callLLM({
-        max_tokens: 700,
+        max_tokens: 800,
         messages: [{
           role: "user",
-          content: `أنت مساعد بحثي لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
-الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان التالي (شخص أو مكان أو جهة): "${q}".
+          content: `أنت مساعد بحثي صارم لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
+الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان: "${q}".
 
-أجب بصيغة JSON فقط بدون أي شرح إضافي وبدون code fences:
+قاعدة صارمة لمنع الهلوسة:
+- لا تخترع أي مصدر أو مؤلف أو رابط مطلقاً.
+- لا تذكر مصدراً إلا إذا كنت متيقناً من وجوده الفعلي وقابليته للتحقق (موسوعة بريتانيكا، Qatar Digital Library، الأرشيف البريطاني The National Archives UK، JSTOR، Oxford Reference، كتاب أكاديمي معروف بمؤلفه ودار نشره).
+- إن لم يتوفر مصدر يقيني قابل للتحقق فاضبط "verifiable": false واترك حقول المصدر فارغة ("") ولا تضع رابطاً وهمياً.
+- الرابط — إن وُجد — يجب أن يكون رابطاً حقيقياً معروفاً لديك (لا تخمّن مسارات URL).
+
+أعد JSON خالصاً فقط بدون code fences:
 {
   "name": "${q}",
-  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي والحرب العالمية الثانية إن أمكن",
+  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي 1939-1945 إن أمكن",
+  "verifiable": true_or_false,
   "source": {
-    "title": "اسم المرجع الموثوق",
-    "author": "المؤلف أو الجهة",
-    "year": "السنة إن وُجدت",
-    "url": "رابط قابل للتحقق إن وُجد (موسوعة بريتانيكا، QDL، الأرشيف البريطاني، دراسة محكّمة…)"
+    "title": "",
+    "author": "",
+    "year": "",
+    "url": ""
   }
 }`
         }]
@@ -1394,6 +1401,13 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
       const clean = text.replace(/```json|```/g,"").trim();
       const m = clean.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(m ? m[0] : clean);
+      // تنظيف نهائي: لو verifiable=false أو لا يوجد رابط — أزل بيانات المصدر تماماً
+      const url = parsed?.source?.url || "";
+      const looksReal = /^https?:\/\/[^\s]+\.[^\s]+/.test(url);
+      if (parsed.verifiable === false || !looksReal) {
+        parsed.verifiable = false;
+        parsed.source = null;
+      }
       setEntityResult(parsed);
     } catch (e) {
       showNotif("⚠️ تعذّر استخراج التعريف — حاول مرة أخرى", "error");
