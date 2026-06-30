@@ -1055,9 +1055,18 @@ ${JSON.stringify(thesisStructure, null, 2)}
   };
 
   const deleteLibSrc = (id) => {
+    const target = library.find(s => s.id === id);
+    if (target?.storagePath) { deleteLibraryFile(target.storagePath).catch(() => {}); }
     saveLibrary(library.filter(s => s.id !== id));
     if (libSelected?.id === id) setLibSelected(null);
     showNotif("🗑️ تم حذف المصدر");
+  };
+
+  // Expose a signed-URL helper for the library UI (PDF/image preview from Storage).
+  const openLibStorageFile = async (path) => {
+    const url = await getLibraryFileUrl(path);
+    if (url) window.open(url, "_blank", "noopener");
+    else showNotif("⚠️ تعذّر فتح الملف", "error");
   };
 
   const filteredLib = library.filter(s => {
