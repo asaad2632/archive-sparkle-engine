@@ -1203,7 +1203,9 @@ JSON المطلوب (أعده فقط بدون backticks):
   "url": "${urlImport}",
   "visitDate": "${new Date().toLocaleDateString("ar-IQ")}",
   "notes": "ملاحظة مختصرة",
-  "keywords": "كلمات مفتاحية"
+  "keywords": "كلمات مفتاحية",
+  "relevance": "مدى صلة المصدر بأطروحة الخليج العربي في الحرب العالمية الثانية 1939-1945 (سطر أو سطران)",
+  "footnoteSummary": "ملخص مقترح للهامش/الحاشية (سطران-ثلاثة) يصلح للاقتباس الأكاديمي"
 }
 اكتشف النوع تلقائياً من خصائص الصفحة (مجال، عناصر بيانات وصفية، إلخ).`
           }]
@@ -1217,20 +1219,15 @@ JSON المطلوب (أعده فقط بدون backticks):
         parsed.sourceType = detectedType;
         parsed.category   = detectedType;
         setUrlResult(parsed);
-        setAddForm(prev => ({
-          ...prev,
-          ...parsed,
+        // فتح نافذة المعاينة الذكية قبل الحفظ النهائي
+        setUrlPreview({
           title: parsed.title || "",
-          author: parsed.author || "",
-          year: parsed.year || "",
-          archiveRef: parsed.archiveRef || "",
-          category: detectedType,
           sourceType: detectedType,
-          notes: parsed.notes || "",
-          keywords: parsed.keywords || "",
-        }));
-        setPage("add");
-        showNotif(`✅ تم استخراج بيانات المصدر (${detectedType}) — راجع النموذج وأكمل البيانات`);
+          relevance: parsed.relevance || "—",
+          footnoteSummary: parsed.footnoteSummary || parsed.notes || "—",
+          raw: parsed,
+        });
+        showNotif(`✅ تم تحليل الرابط (${detectedType}) — راجع المعاينة قبل الحفظ`);
 
       } catch {
         showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
@@ -1239,6 +1236,66 @@ JSON المطلوب (أعده فقط بدون backticks):
       showNotif("حدث خطأ في الاتصال", "error");
     }
     setUrlLoading(false);
+  };
+
+  // تأكيد الحفظ من نافذة معاينة الرابط — يملأ النموذج ويفتح صفحة الإضافة
+  const confirmUrlPreview = () => {
+    if (!urlPreview) return;
+    const parsed = urlPreview.raw || {};
+    const detectedType = urlPreview.sourceType || parsed.sourceType || "وثيقة أرشيفية";
+    setAddForm(prev => ({
+      ...prev,
+      ...parsed,
+      title: parsed.title || urlPreview.title || "",
+      author: parsed.author || "",
+      year: parsed.year || "",
+      archiveRef: parsed.archiveRef || "",
+      category: detectedType,
+      sourceType: detectedType,
+      notes: urlPreview.footnoteSummary || parsed.notes || "",
+      keywords: parsed.keywords || "",
+    }));
+    setUrlPreview(null);
+    setPage("add");
+    showNotif("✅ تم نقل البيانات إلى نموذج الإضافة");
+  };
+
+  // ===== المعرّف الأكاديمي للكيانات (شخص/مكان/جهة) =====
+  const handleEntityLookup = async () => {
+    const q = entityQuery.trim();
+    if (!q) return;
+    setEntityLoading(true);
+    setEntityResult(null);
+    try {
+      const data = await callLLM({
+        max_tokens: 700,
+        messages: [{
+          role: "user",
+          content: `أنت مساعد بحثي لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
+الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان التالي (شخص أو مكان أو جهة): "${q}".
+
+أجب بصيغة JSON فقط بدون أي شرح إضافي وبدون code fences:
+{
+  "name": "${q}",
+  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي والحرب العالمية الثانية إن أمكن",
+  "source": {
+    "title": "اسم المرجع الموثوق",
+    "author": "المؤلف أو الجهة",
+    "year": "السنة إن وُجدت",
+    "url": "رابط قابل للتحقق إن وُجد (موسوعة بريتانيكا، QDL، الأرشيف البريطاني، دراسة محكّمة…)"
+  }
+}`
+        }]
+      });
+      const text = data.content?.map(c=>c.text||"").join("") || "{}";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const m = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : clean);
+      setEntityResult(parsed);
+    } catch (e) {
+      showNotif("⚠️ تعذّر استخراج التعريف — حاول مرة أخرى", "error");
+    }
+    setEntityLoading(false);
   };
 
   // محرك البحث في التليغرام (محاكاة ذكية بـ Claude)
