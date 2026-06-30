@@ -464,6 +464,21 @@ export default function App() {
     syncDeletedDebounced(deletedBaseDocs);
   }, [deletedBaseDocs, syncDeletedDebounced]);
 
+  // Phase 3b: load library from cloud once on mount
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await loadLibrary();
+        if (cancelled) return;
+        if (items && items.length) setLibrary(items);
+      } catch (e) { console.warn("[loadLibrary]", e); }
+      finally { libHydratedRef.current = true; }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+
 
   const commitChapterEdit = () => {
     if (!editingChapter) return;
