@@ -2294,6 +2294,37 @@ ${docsContext}
         </div>
       )}
 
+      {/* ===== MODAL: معاينة استخراج الرابط الذكي ===== */}
+      {urlPreview && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:620,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>🔗 معاينة المصدر المستخرَج</div>
+              <button onClick={()=>setUrlPreview(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
+            </div>
+            <div style={{display:"grid",gap:10,fontSize:13,marginBottom:14}}>
+              <div><strong>العنوان:</strong> <input value={urlPreview.title} onChange={e=>setUrlPreview(p=>({...p,title:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}/></div>
+              <div><strong>نوع المصدر:</strong>
+                <select value={urlPreview.sourceType} onChange={e=>setUrlPreview(p=>({...p,sourceType:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}>
+                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div><strong>الصلة بالأطروحة:</strong>
+                <textarea value={urlPreview.relevance} onChange={e=>setUrlPreview(p=>({...p,relevance:e.target.value}))} rows={2} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
+              </div>
+              <div><strong>ملخص الحاشية المقترح:</strong>
+                <textarea value={urlPreview.footnoteSummary} onChange={e=>setUrlPreview(p=>({...p,footnoteSummary:e.target.value}))} rows={3} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setUrlPreview(null)} style={{padding:"8px 16px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إلغاء</button>
+              <button onClick={confirmUrlPreview} style={{padding:"8px 16px",borderRadius:8,background:"#10b981",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>✅ تأكيد ومتابعة الإضافة</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {/* ===== MODAL: توليد هوامش متعددة ===== */}
       {bulkFootnoteModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
