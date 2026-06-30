@@ -3,7 +3,7 @@ import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
 import SupervisorRoom from "./SupervisorRoom";
-import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce } from "./cloudSync";
+import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce, loadLibrary, syncLibrary, uploadLibraryFile, getLibraryFileUrl, deleteLibraryFile } from "./cloudSync";
 import { supabase } from "@/integrations/supabase/client";
 
 // ============================================================
@@ -423,6 +423,8 @@ export default function App() {
   const syncUserDocsDebounced = useRef(debounce(syncUserDocs, 600)).current;
   const syncChaptersDebounced = useRef(debounce(syncChapters, 600)).current;
   const syncDeletedDebounced  = useRef(debounce(syncDeletedBaseDocs, 600)).current;
+  const syncLibraryDebounced  = useRef(debounce(syncLibrary, 800)).current;
+  const libHydratedRef = useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -461,6 +463,21 @@ export default function App() {
     if (!cloudHydratedRef.current) return;
     syncDeletedDebounced(deletedBaseDocs);
   }, [deletedBaseDocs, syncDeletedDebounced]);
+
+  // Phase 3b: load library from cloud once on mount
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await loadLibrary();
+        if (cancelled) return;
+        if (items && items.length) setLibrary(items);
+      } catch (e) { console.warn("[loadLibrary]", e); }
+      finally { libHydratedRef.current = true; }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
 
 
   const commitChapterEdit = () => {
@@ -729,6 +746,14 @@ export default function App() {
     try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
   };
 
+  // Phase 3b: debounced library sync to cloud
+  React.useEffect(() => {
+    if (!libHydratedRef.current) return;
+    syncLibraryDebounced(library);
+  }, [library, syncLibraryDebounced]);
+
+
+
   // Build a structured view of the live `chapters` state for AI prompts.
   // Sub-sections are detected by trailing lowercase letter (e.g. "2-1a" under "2-1").
   const buildThesisStructure = () => {
@@ -967,6 +992,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
       }
 
       const srcId = Date.now() + Math.random();
+      // Phase 3b: upload original file to thesis-files bucket (fire-and-forget — analysis continues)
+      let storagePath = null;
+      try { storagePath = await uploadLibraryFile(file); } catch (e) { console.warn("[storage-upload]", e); }
       const newSrc = {
         id: srcId, fileName: file.name, fileType: ext, fileSize: file.size,
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
@@ -975,7 +1003,8 @@ ${JSON.stringify(thesisStructure, null, 2)}
         chapterId: null, sections:[], priority:"★★",
         importantPages:"", summary:"", keywords:[], whyImportant:"", howToUse:"",
         keyPoints: [],
-        fileData: storedText, // store text only; PDFs are too large for localStorage
+        storagePath,
+        fileData: storedText, // text only; binary content lives in Storage
       };
       updateLibrary(prev => [newSrc, ...prev]);
 
@@ -1026,9 +1055,18 @@ ${JSON.stringify(thesisStructure, null, 2)}
   };
 
   const deleteLibSrc = (id) => {
+    const target = library.find(s => s.id === id);
+    if (target?.storagePath) { deleteLibraryFile(target.storagePath).catch(() => {}); }
     saveLibrary(library.filter(s => s.id !== id));
     if (libSelected?.id === id) setLibSelected(null);
     showNotif("🗑️ تم حذف المصدر");
+  };
+
+  // Expose a signed-URL helper for the library UI (PDF/image preview from Storage).
+  const openLibStorageFile = async (path) => {
+    const url = await getLibraryFileUrl(path);
+    if (url) window.open(url, "_blank", "noopener");
+    else showNotif("⚠️ تعذّر فتح الملف", "error");
   };
 
   const filteredLib = library.filter(s => {
