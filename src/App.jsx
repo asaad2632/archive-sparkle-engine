@@ -423,6 +423,8 @@ export default function App() {
   const syncUserDocsDebounced = useRef(debounce(syncUserDocs, 600)).current;
   const syncChaptersDebounced = useRef(debounce(syncChapters, 600)).current;
   const syncDeletedDebounced  = useRef(debounce(syncDeletedBaseDocs, 600)).current;
+  const syncLibraryDebounced  = useRef(debounce(syncLibrary, 800)).current;
+  const libHydratedRef = useRef(false);
 
   React.useEffect(() => {
     let cancelled = false;
