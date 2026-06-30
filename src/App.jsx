@@ -2253,6 +2253,14 @@ ${docsContext}
                 <span>{n.icon}</span><span style={{display:"none"}} className="nav-label">{n.label}</span>
               </button>
             ))}
+            {userEmail && (
+              <span style={{fontSize:11,color:"#e2e8f0",marginRight:8,marginLeft:4,opacity:0.9,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>
+                👤 {userEmail}
+              </span>
+            )}
+            <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600,marginRight:4}}>
+              🚪 خروج
+            </button>
           </div>
         </div>
         {/* nav labels row */}
