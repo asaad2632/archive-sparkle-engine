@@ -451,7 +451,7 @@ ${uploadedList}
           <div style={cardSx}>
             <h3 style={{ marginTop:0, color: PRIMARY }}>📄 رفع الفصول للمراجعة</h3>
             <div style={{ background:"#eff6ff", padding:10, borderRadius:8, fontSize:12, color:"#1e40af", marginBottom:12 }}>
-              🔒 الملفات تُحفظ محلياً للعرض والتحميل فقط — لن تُرسل لأي ذكاء اصطناعي ولن يُحلَّل محتواها.
+              🔒 الملفات تُرفع لتخزين سحابي خاص يشاركه الطالب والمشرف فقط — لن تُرسل لأي ذكاء اصطناعي ولن يُحلَّل محتواها.
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
               <div>
