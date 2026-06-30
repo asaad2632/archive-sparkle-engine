@@ -1178,67 +1178,120 @@ ${JSON.stringify(thesisStructure, null, 2)}
     setUrlLoading(true);
     setUrlResult(null);
     try {
+      const structureHint = chapters.map(ch => `- [${ch.id}] ${ch.titleAr}`).join("\n");
       const data = await callLLM({
-          max_tokens:1000,
-          tools:[{ type:"web_search_20250305", name:"web_search" }],
+          max_tokens:3500,
           messages:[{
             role:"user",
-            content:`اذهب إلى هذا الرابط واستخرج بيانات المصدر مهما كان نوعه (كتاب/رسالة/بحث/مجلة/مؤتمر/صحيفة/موقع/موسوعة/وثيقة أرشيفية/تقرير) بصيغة JSON فقط بدون أي شرح:
-رابط: ${urlImport}
+            content:`اقرأ محتوى الصفحة على الرابط التالي واستخرج **جميع** المصادر/المراجع المذكورة فيها (قائمة كتب، ببليوغرافيا، نتائج بحث، فهرس وثائق… استهدف 10-20 عنصراً إن وُجدت). لا تختر مصدراً واحداً فقط.
+الرابط: ${urlImport}
 
-JSON المطلوب (أعده فقط بدون backticks):
+هيكل الأطروحة (للترشيح):
+${structureHint}
+
+أعد JSON خالصاً فقط بدون أي شرح وبدون \`\`\`:
 {
-  "title": "العنوان بالعربية",
-  "author": "المؤلف أو الجهة",
-  "year": "السنة (رقم فقط أو null)",
-  "archiveRef": "رقم الأرشيف إن وُجد",
-  "sourceType": "أحد القيم: كتاب عربي|كتاب أجنبي|رسالة ماجستير|أطروحة دكتوراه|بحث علمي|مجلة علمية|مؤتمر علمي|صحيفة|موقع إلكتروني|موسوعة|وثيقة أرشيفية|تقرير رسمي|مصدر أولي",
-  "publisher": "الناشر إن وُجد",
-  "place": "مكان النشر إن وُجد",
-  "edition": "الطبعة إن وُجدت",
-  "journal": "اسم المجلة إن كان بحث/مقالة",
-  "volume": "المجلد إن وُجد",
-  "issue": "العدد إن وُجد",
-  "university": "الجامعة إن كان رسالة",
-  "college": "الكلية إن كان رسالة",
-  "conference": "اسم المؤتمر إن وُجد",
-  "newspaper": "اسم الصحيفة إن كانت صحيفة",
-  "url": "${urlImport}",
-  "visitDate": "${new Date().toLocaleDateString("ar-IQ")}",
-  "notes": "ملاحظة مختصرة",
-  "keywords": "كلمات مفتاحية",
-  "relevance": "مدى صلة المصدر بأطروحة الخليج العربي في الحرب العالمية الثانية 1939-1945 (سطر أو سطران)",
-  "footnoteSummary": "ملخص مقترح للهامش/الحاشية (سطران-ثلاثة) يصلح للاقتباس الأكاديمي"
+  "sources": [
+    {
+      "title": "العنوان",
+      "author": "المؤلف (اسم العائلة، الاسم الأول)",
+      "year": "السنة أو null",
+      "publisher": "الناشر",
+      "place": "مكان النشر",
+      "edition": "الطبعة",
+      "journal": "المجلة إن كان مقالاً",
+      "volume": "المجلد",
+      "issue": "العدد",
+      "pages": "الصفحات",
+      "university": "الجامعة إن كان رسالة",
+      "archiveRef": "رقم الأرشيف إن وُجد",
+      "url": "رابط الوصول إن وُجد",
+      "sourceType": "أحد: كتاب عربي|كتاب أجنبي|رسالة ماجستير|أطروحة دكتوراه|بحث علمي|مجلة علمية|مؤتمر علمي|صحيفة|موقع إلكتروني|موسوعة|وثيقة أرشيفية|تقرير رسمي|مصدر أولي",
+      "suggestedChapterId": رقم_الفصل_المقترح_أو_null,
+      "relevance": "سطر واحد عن صلته بأطروحة الخليج العربي 1939-1945",
+      "footnoteSummary": "ملخص مقترح للحاشية (سطران)"
+    }
+  ]
 }
-اكتشف النوع تلقائياً من خصائص الصفحة (مجال، عناصر بيانات وصفية، إلخ).`
+
+إن وجدت مصدراً واحداً فقط فأعده داخل المصفوفة. اعتمد على بيانات الصفحة فعلياً ولا تختلق مصادر.`
           }]
         });
       const text = data.content?.map(c=>c.text||"").join("") || "";
-      try {
-        const clean = text.replace(/```json|```/g,"").trim();
-        const parsed = JSON.parse(clean);
-        // كشف نوع المصدر إذا لم يحدّده الذكاء الاصطناعي
-        const detectedType = parsed.sourceType || detectSourceTypeFromUrl(urlImport);
-        parsed.sourceType = detectedType;
-        parsed.category   = detectedType;
-        setUrlResult(parsed);
-        // فتح نافذة المعاينة الذكية قبل الحفظ النهائي
-        setUrlPreview({
-          title: parsed.title || "",
-          sourceType: detectedType,
-          relevance: parsed.relevance || "—",
-          footnoteSummary: parsed.footnoteSummary || parsed.notes || "—",
-          raw: parsed,
-        });
-        showNotif(`✅ تم تحليل الرابط (${detectedType}) — راجع المعاينة قبل الحفظ`);
-
-      } catch {
-        showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
+      const clean = text.replace(/```json|```/g,"").trim();
+      const m = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : clean);
+      const rawItems = Array.isArray(parsed.sources) ? parsed.sources : (parsed.title ? [parsed] : []);
+      if (rawItems.length === 0) {
+        showNotif("⚠️ لم يتم العثور على مصادر قابلة للاستخراج", "warn");
+        setUrlLoading(false);
+        return;
       }
-    } catch {
-      showNotif("حدث خطأ في الاتصال", "error");
+      const items = rawItems.map((s, i) => ({
+        ...s,
+        _idx: i,
+        sourceType: s.sourceType || detectSourceTypeFromUrl(s.url || urlImport),
+        url: s.url || urlImport,
+        chapterId: s.suggestedChapterId || "",
+        keep: true,
+      }));
+      if (items.length === 1) {
+        const parsedOne = items[0];
+        setUrlResult(parsedOne);
+        setUrlPreview({
+          title: parsedOne.title || "",
+          sourceType: parsedOne.sourceType,
+          relevance: parsedOne.relevance || "—",
+          footnoteSummary: parsedOne.footnoteSummary || "—",
+          raw: parsedOne,
+        });
+      } else {
+        setMultiUrlPreview({ items });
+      }
+      showNotif(`✅ تم استخراج ${items.length} مصدر — راجع المعاينة قبل الحفظ`);
+    } catch (e) {
+      console.error("[url-import]", e);
+      showNotif("⚠️ تعذّر استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
     }
     setUrlLoading(false);
+  };
+
+  // حفظ جميع المصادر من معاينة الاستيراج المتعدد إلى docs مباشرة
+  const saveAllMultiUrl = () => {
+    if (!multiUrlPreview) return;
+    const toSave = multiUrlPreview.items.filter(it => it.keep && it.title);
+    if (toSave.length === 0) { showNotif("لا توجد مصادر محددة للحفظ", "warn"); return; }
+    const baseId = Date.now();
+    const newDocs = toSave.map((it, i) => ({
+      id: baseId + i,
+      title: it.title,
+      author: it.author || "",
+      year: it.year || null,
+      publisher: it.publisher || "",
+      place: it.place || "",
+      edition: it.edition || "",
+      journal: it.journal || "",
+      volume: it.volume || "",
+      issue: it.issue || "",
+      pages: it.pages || "",
+      university: it.university || "",
+      archiveRef: it.archiveRef || "",
+      url: it.url || "",
+      sourceType: it.sourceType || "وثيقة أرشيفية",
+      category:   it.sourceType || "وثيقة أرشيفية",
+      chapterId: it.chapterId ? parseInt(it.chapterId) : null,
+      section: "",
+      sectionId: "",
+      priority: "★★",
+      notes: it.footnoteSummary || it.relevance || "",
+      keywords: "",
+      isNew: true,
+      status: "لم يُراجع",
+    }));
+    setDocs(prev => [...newDocs, ...prev]);
+    setMultiUrlPreview(null);
+    showNotif(`✅ تم حفظ ${newDocs.length} مصدر في قاعدة الوثائق`);
+    setPage("search");
   };
 
   // تأكيد الحفظ من نافذة معاينة الرابط — يملأ النموذج ويفتح صفحة الإضافة
@@ -1262,6 +1315,53 @@ JSON المطلوب (أعده فقط بدون backticks):
     setPage("add");
     showNotif("✅ تم نقل البيانات إلى نموذج الإضافة");
   };
+
+  // ===== استخراج تلقائي لبيانات الكتاب من العنوان/المؤلف =====
+  const extractBookMetadata = async () => {
+    const title = (addForm.title||"").trim();
+    if (!title) { showNotif("أدخل عنوان الكتاب أولاً", "warn"); return; }
+    setBookExtractLoading(true);
+    try {
+      const data = await callLLM({
+        max_tokens: 600,
+        messages: [{
+          role: "user",
+          content: `استخرج بيانات الكتاب التالية بناءً على معرفتك الببليوغرافية الموثوقة فقط، ولا تختلق:
+العنوان: "${title}"
+${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
+
+أعد JSON خالصاً فقط (بدون \`\`\`):
+{
+  "author": "اسم العائلة، الاسم الأول",
+  "publisher": "دار النشر",
+  "place": "مكان النشر",
+  "year": "السنة",
+  "edition": "الطبعة (الأولى/الثانية/…)",
+  "verified": true_or_false
+}
+إن لم تتوفر معلومة موثوقة لحقل، اتركه فارغاً ("").`
+        }]
+      });
+      const text = data.content?.map(c=>c.text||"").join("") || "{}";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const m = clean.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(m ? m[0] : clean);
+      setAddForm(prev => ({
+        ...prev,
+        author: parsed.author || prev.author,
+        publisher: parsed.publisher || prev.publisher,
+        place: parsed.place || prev.place,
+        year: parsed.year || prev.year,
+        edition: parsed.edition || prev.edition,
+      }));
+      showNotif(parsed.verified === false ? "⚠️ بيانات تقريبية — راجعها قبل الحفظ" : "✅ تم استخراج بيانات الكتاب");
+    } catch (e) {
+      console.error("[book-extract]", e);
+      showNotif("تعذّر الاستخراج التلقائي", "error");
+    }
+    setBookExtractLoading(false);
+  };
+
 
   // ===== المعرّف الأكاديمي للكيانات (شخص/مكان/جهة) =====
   const handleEntityLookup = async () => {
