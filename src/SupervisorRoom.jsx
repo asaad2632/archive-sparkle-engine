@@ -1,4 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import {
+  loadSupervisorQuestions, syncSupervisorQuestions,
+  loadSupervisorFiles, syncSupervisorFiles, uploadSupervisorFile, getSupervisorFileUrl, deleteSupervisorFile,
+  loadSupervisorNotes, syncSupervisorNotes,
+  loadSupervisorMeetings, syncSupervisorMeetings,
+  loadSupervisorDecisions, syncSupervisorDecisions,
+  loadSupervisorReports, syncSupervisorReports,
+  debounce,
+} from "@/cloudSync";
 
 const LS = {
   questions: "acadarchiv_supervisor_questions",
