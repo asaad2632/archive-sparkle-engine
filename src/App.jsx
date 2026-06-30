@@ -992,6 +992,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
       }
 
       const srcId = Date.now() + Math.random();
+      // Phase 3b: upload original file to thesis-files bucket (fire-and-forget — analysis continues)
+      let storagePath = null;
+      try { storagePath = await uploadLibraryFile(file); } catch (e) { console.warn("[storage-upload]", e); }
       const newSrc = {
         id: srcId, fileName: file.name, fileType: ext, fileSize: file.size,
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
@@ -1000,7 +1003,8 @@ ${JSON.stringify(thesisStructure, null, 2)}
         chapterId: null, sections:[], priority:"★★",
         importantPages:"", summary:"", keywords:[], whyImportant:"", howToUse:"",
         keyPoints: [],
-        fileData: storedText, // store text only; PDFs are too large for localStorage
+        storagePath,
+        fileData: storedText, // text only; binary content lives in Storage
       };
       updateLibrary(prev => [newSrc, ...prev]);
 
