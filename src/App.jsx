@@ -2574,9 +2574,31 @@ ${docsContext}
               <div style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:8,padding:"6px 12px",border:"0.5px solid #e2e8f0"}}>
                 💡 اضغط "تعديل" بجانب أي فصل أو مبحث لتغيير عنوانه — ستُحدَّث الوثائق المرتبطة تلقائياً
               </div>
+
+            {/* شريط البحث في هيكل الأطروحة */}
+            <div style={{background:"white",borderRadius:10,padding:10,border:"0.5px solid #e2e8f0",marginBottom:14,display:"flex",gap:8,alignItems:"center",position:"sticky",top:0,zIndex:5}}>
+              <span style={{fontSize:16}}>🔍</span>
+              <input
+                value={structureSearch}
+                onChange={e=>setStructureSearch(e.target.value)}
+                placeholder="ابحث في الفصول والمباحث والفقرات..."
+                style={{flex:1,padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",outline:"none"}}
+              />
+              {structureSearch && (
+                <button onClick={()=>setStructureSearch("")} style={{padding:"6px 10px",borderRadius:7,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>مسح</button>
+              )}
             </div>
 
-            {chapters.map(ch=>{
+            {(() => {
+              const q = structureSearch.trim().toLowerCase();
+              const visibleChapters = !q ? chapters : chapters.filter(ch => {
+                if ((ch.titleAr||"").toLowerCase().includes(q)) return true;
+                return (ch.sections||[]).some(s => (s.title||"").toLowerCase().includes(q) || (s.num||"").toLowerCase().includes(q));
+              });
+              if (visibleChapters.length === 0) {
+                return <div style={{background:"white",borderRadius:10,padding:20,border:"0.5px solid #e2e8f0",textAlign:"center",color:"#94a3b8",fontSize:13}}>لا توجد نتائج مطابقة لـ "{structureSearch}"</div>;
+              }
+              return visibleChapters.map(ch=>{
               const chDocs = combinedDocs.filter(d=>d.chapterId===ch.id);
               const mainSections = ch.sections.filter(s=>!s.id.includes("a")&&!s.id.includes("b")&&!s.id.includes("c"));
               const isEditingThisChapter = editingChapter?.id === ch.id;
