@@ -1111,7 +1111,7 @@ ${JSON.stringify(thesisStructure, null, 2)}
     const q = libFilter.query.toLowerCase();
     if (q && !s.title?.toLowerCase().includes(q) && !s.author?.toLowerCase().includes(q) && !s.fileName?.toLowerCase().includes(q) && !(s.keywords||[]).join(" ").toLowerCase().includes(q)) return false;
     if (libFilter.chapterId && s.chapterId !== parseInt(libFilter.chapterId)) return false;
-    if (libFilter.category && s.sourceType !== libFilter.category) return false;
+    if (libFilter.category && (s.sourceType || s.category) !== libFilter.category) return false;
     if (libFilter.priority && s.priority !== libFilter.priority) return false;
     return true;
   });
