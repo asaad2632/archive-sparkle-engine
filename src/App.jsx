@@ -2441,6 +2441,60 @@ ${docsContext}
         </div>
       )}
 
+      {/* ===== MODAL: معاينة استخراج مصادر متعددة من رابط ===== */}
+      {multiUrlPreview && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"white",borderRadius:16,padding:20,maxWidth:1000,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📦 تم استخراج {multiUrlPreview.items.length} مصدر — راجع وحرّر قبل الحفظ</div>
+              <button onClick={()=>setMultiUrlPreview(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
+            </div>
+            <div style={{fontSize:11,color:"#64748b",marginBottom:10}}>أزل علامة "الإبقاء" لتجاهل أي مصدر — يمكنك تعديل كل الحقول.</div>
+            <div style={{overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:10,paddingLeft:4}}>
+              {multiUrlPreview.items.map((it, i) => {
+                const upd = (k,v) => setMultiUrlPreview(p => ({ ...p, items: p.items.map((x,j)=> j===i ? {...x,[k]:v} : x) }));
+                return (
+                  <div key={i} style={{border:"0.5px solid #e2e8f0",borderRadius:10,padding:12,background:it.keep?"#fff":"#f8fafc",opacity:it.keep?1:0.55}}>
+                    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+                      <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#475569",cursor:"pointer"}}>
+                        <input type="checkbox" checked={it.keep} onChange={e=>upd("keep",e.target.checked)}/>
+                        الإبقاء
+                      </label>
+                      <span style={{fontSize:11,background:"#e0e7ff",color:"#3730a3",padding:"2px 8px",borderRadius:5,fontWeight:600}}>#{i+1}</span>
+                      <select value={it.sourceType||""} onChange={e=>upd("sourceType",e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
+                        {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <select value={it.chapterId||""} onChange={e=>upd("chapterId",e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit",flex:1}}>
+                        <option value="">— اختر الفصل المقترح —</option>
+                        {chapters.map(ch=><option key={ch.id} value={ch.id}>{ch.titleAr.split(":")[0]}</option>)}
+                      </select>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
+                      <input value={it.title||""} onChange={e=>upd("title",e.target.value)} placeholder="العنوان" style={{gridColumn:"1/-1",padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.author||""} onChange={e=>upd("author",e.target.value)} placeholder="المؤلف (اسم العائلة، الاسم الأول)" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.publisher||""} onChange={e=>upd("publisher",e.target.value)} placeholder="الناشر" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.place||""} onChange={e=>upd("place",e.target.value)} placeholder="مكان النشر" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.year||""} onChange={e=>upd("year",e.target.value)} placeholder="السنة" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.edition||""} onChange={e=>upd("edition",e.target.value)} placeholder="الطبعة" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
+                      <input value={it.url||""} onChange={e=>upd("url",e.target.value)} placeholder="الرابط" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit",direction:"ltr"}}/>
+                    </div>
+                    {it.relevance && <div style={{fontSize:11,color:"#64748b",marginTop:6}}><strong>الصلة:</strong> {it.relevance}</div>}
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e2e8f0"}}>
+              <button onClick={()=>setMultiUrlPreview(null)} style={{padding:"8px 16px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إلغاء</button>
+              <button onClick={saveAllMultiUrl} style={{padding:"8px 18px",borderRadius:8,background:"#10b981",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>
+                ✅ حفظ {multiUrlPreview.items.filter(x=>x.keep).length} مصدر
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
 
       {/* ===== MODAL: توليد هوامش متعددة ===== */}
       {bulkFootnoteModal && (
