@@ -1,4 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import {
+  loadSupervisorQuestions, syncSupervisorQuestions,
+  loadSupervisorFiles, syncSupervisorFiles, uploadSupervisorFile, getSupervisorFileUrl, deleteSupervisorFile,
+  loadSupervisorNotes, syncSupervisorNotes,
+  loadSupervisorMeetings, syncSupervisorMeetings,
+  loadSupervisorDecisions, syncSupervisorDecisions,
+  loadSupervisorReports, syncSupervisorReports,
+  debounce,
+} from "@/cloudSync";
 
 const LS = {
   questions: "acadarchiv_supervisor_questions",
@@ -97,6 +106,52 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
   useEffect(() => saveLS(LS.decisions, decisions), [decisions]);
   useEffect(() => saveLS(LS.reports, reports), [reports]);
 
+
+
+  // ---------- Phase 3d cloud hydration ----------
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [q, f, n, m, d, r] = await Promise.all([
+          loadSupervisorQuestions(),
+          loadSupervisorFiles(),
+          loadSupervisorNotes(),
+          loadSupervisorMeetings(),
+          loadSupervisorDecisions(),
+          loadSupervisorReports(),
+        ]);
+        if (cancelled) return;
+        if (q.length) setQuestions(q);
+        if (f.length) setFiles(f);
+        if (n.length) setNotes(n);
+        if (m.length) setMeetings(m);
+        if (d.length) setDecisions(d);
+        if (r.length) setReports(r);
+      } catch (err) {
+        console.warn("[SupervisorRoom hydration]", err);
+      } finally {
+        hydratedRef.current = true;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const debSyncQ = useMemo(() => debounce(syncSupervisorQuestions, 800), []);
+  const debSyncF = useMemo(() => debounce(syncSupervisorFiles, 800), []);
+  const debSyncN = useMemo(() => debounce(syncSupervisorNotes, 800), []);
+  const debSyncM = useMemo(() => debounce(syncSupervisorMeetings, 800), []);
+  const debSyncD = useMemo(() => debounce(syncSupervisorDecisions, 800), []);
+  const debSyncR = useMemo(() => debounce(syncSupervisorReports, 800), []);
+
+  useEffect(() => { if (hydratedRef.current) debSyncQ(questions); }, [questions, debSyncQ]);
+  useEffect(() => { if (hydratedRef.current) debSyncF(files); }, [files, debSyncF]);
+  useEffect(() => { if (hydratedRef.current) debSyncN(notes); }, [notes, debSyncN]);
+  useEffect(() => { if (hydratedRef.current) debSyncM(meetings); }, [meetings, debSyncM]);
+  useEffect(() => { if (hydratedRef.current) debSyncD(decisions); }, [decisions, debSyncD]);
+  useEffect(() => { if (hydratedRef.current) debSyncR(reports); }, [reports, debSyncR]);
+
   const confirmDelete = (msg, onConfirm) => {
     if (setConfirmDialog) {
       setConfirmDialog({ title: "تأكيد الحذف", message: msg, onConfirm });
@@ -135,18 +190,25 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
       e.target.value = "";
       return;
     }
-    // Store as data URL locally — NEVER sent to AI
+    // Keep dataURL for instant local preview, plus raw File for cloud upload
     const reader = new FileReader();
-    reader.onload = (ev) => setPendingFile({ name: f.name, size: f.size, dataUrl: ev.target.result });
+    reader.onload = (ev) => setPendingFile({ name: f.name, size: f.size, type: f.type, dataUrl: ev.target.result, file: f });
     reader.readAsDataURL(f);
   };
-  const uploadFile = () => {
+  const uploadFile = async () => {
     if (!pendingFile) { notify("⚠️ اختر ملفاً أولاً", "error"); return; }
+    notify("⏳ جاري رفع الملف...");
+    let storagePath = null;
+    try {
+      if (pendingFile.file) storagePath = await uploadSupervisorFile(pendingFile.file);
+    } catch (err) { console.warn("[uploadSupervisorFile]", err); }
     setFiles(p => [...p, {
       id: uid(),
       fileName: pendingFile.name,
+      fileType: pendingFile.type || "",
       size: pendingFile.size,
       dataUrl: pendingFile.dataUrl,
+      storagePath: storagePath || "",
       chapter: fForm.chapter,
       version: fForm.version || "النسخة الأولى",
       date: fForm.date || todayISO(),
@@ -158,13 +220,23 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
     setFForm({ chapter:"1", version:"", date: todayISO(), note:"" });
     const input = document.getElementById("supervisor-file-input");
     if (input) input.value = "";
-    notify("✅ تم رفع الفصل للمراجعة (الملف محفوظ محلياً ولن يُرسل لأي ذكاء اصطناعي)");
+    notify(storagePath
+      ? "✅ تم رفع الفصل للمراجعة ومشاركته مع المشرف"
+      : "✅ تم حفظ الفصل محلياً (تعذّر الرفع للسحابة)");
   };
-  const downloadFile = (f) => {
+  const downloadFile = async (f) => {
+    let href = f.dataUrl;
+    if (!href && f.storagePath) href = await getSupervisorFileUrl(f.storagePath);
+    if (!href) { notify("⚠️ تعذّر الحصول على الملف", "error"); return; }
     const a = document.createElement("a");
-    a.href = f.dataUrl;
+    a.href = href;
     a.download = f.fileName;
+    if (!f.dataUrl) a.target = "_blank";
     document.body.appendChild(a); a.click(); a.remove();
+  };
+  const removeFileEntry = async (f) => {
+    if (f.storagePath) { try { await deleteSupervisorFile(f.storagePath); } catch {} }
+    setFiles(p => p.filter(x => x.id !== f.id));
   };
   const filesByChapter = useMemo(() => {
     const map = {};
@@ -379,7 +451,7 @@ ${uploadedList}
           <div style={cardSx}>
             <h3 style={{ marginTop:0, color: PRIMARY }}>📄 رفع الفصول للمراجعة</h3>
             <div style={{ background:"#eff6ff", padding:10, borderRadius:8, fontSize:12, color:"#1e40af", marginBottom:12 }}>
-              🔒 الملفات تُحفظ محلياً للعرض والتحميل فقط — لن تُرسل لأي ذكاء اصطناعي ولن يُحلَّل محتواها.
+              🔒 الملفات تُرفع لتخزين سحابي خاص يشاركه الطالب والمشرف فقط — لن تُرسل لأي ذكاء اصطناعي ولن يُحلَّل محتواها.
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
               <div>
@@ -434,7 +506,7 @@ ${uploadedList}
                         {FILE_STATUSES.map(s => <option key={s.v} value={s.v}>{s.icon} {s.v}</option>)}
                       </select>
                       <button onClick={() => downloadFile(f)} style={{...btnGhost, background:"#dbeafe", color:"#1e40af"}}>📥 تحميل</button>
-                      <button onClick={() => confirmDelete(`حذف الملف "${f.fileName}"؟`, () => setFiles(p => p.filter(x => x.id !== f.id)))}
+                      <button onClick={() => confirmDelete(`حذف الملف "${f.fileName}"؟`, () => removeFileEntry(f))}
                         style={{...btnDanger, marginInlineStart:"auto"}}>🗑️ حذف</button>
                     </div>
                   </div>

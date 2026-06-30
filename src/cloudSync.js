@@ -476,3 +476,200 @@ export async function syncResearcherAnalysis(arr) {
     })));
   }
 }
+
+// ==================== Phase 3d: Supervisor Room ====================
+// Tables use created_by / uploaded_by (not user_id). Shared workspace =
+// read all rows, dedupe by client_id (latest updated_at wins). On write,
+// upsert as the current user and only delete rows authored by current user.
+
+async function loadSupervisorTable(table) {
+  const userId = await uid();
+  if (!userId) return [];
+  const { data, error } = await supabase.from(table).select("*").not("client_id", "is", null);
+  if (error) { console.warn(`[load:${table}]`, error); return []; }
+  const map = new Map();
+  for (const r of data || []) {
+    const prev = map.get(r.client_id);
+    if (!prev || new Date(r.updated_at || 0) > new Date(prev.updated_at || 0)) map.set(r.client_id, r);
+  }
+  return [...map.values()];
+}
+
+async function syncSupervisorTable(table, rows, ownerCol /* 'created_by' | 'uploaded_by' */) {
+  const userId = await uid();
+  if (!userId) return;
+  // Only push rows that belong to current user (avoid stomping other user's edits)
+  const myRows = rows.filter(r => r[ownerCol] === userId);
+  if (myRows.length) {
+    await supabase.from(table).upsert(myRows, { onConflict: `${ownerCol},client_id` });
+  }
+  const keepIds = myRows.map(r => r.client_id);
+  let del = supabase.from(table).delete().eq(ownerCol, userId).not("client_id", "is", null);
+  if (keepIds.length) del = del.not("client_id", "in", `(${keepIds.map(id => `"${id}"`).join(",")})`);
+  await del;
+}
+
+// ----- questions -----
+function qToRow(q, userId) {
+  return {
+    created_by: q.ownerId || userId, client_id: String(q.id),
+    chapter: q.chapter ?? null, note_type: q.type ?? null, content: q.text ?? null,
+    date: q.date ?? null, priority: q.priority ?? null,
+    student_reply: q.reply ?? null, status: q.status ?? null,
+  };
+}
+function rowToQ(r) {
+  return {
+    id: r.client_id, ownerId: r.created_by,
+    chapter: r.chapter || "general", type: r.note_type || "سؤال",
+    text: r.content || "", date: r.date || "", priority: r.priority || "عادي",
+    reply: r.student_reply || "", status: r.status || "pending",
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorQuestions() { return (await loadSupervisorTable("supervisor_questions")).map(rowToQ); }
+export async function syncSupervisorQuestions(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_questions", arr.map(q => qToRow(q, userId)), "created_by");
+}
+
+// ----- files -----
+function fToRow(f, userId) {
+  return {
+    uploaded_by: f.ownerId || userId, client_id: String(f.id),
+    chapter: f.chapter ?? null, version: f.version ?? null,
+    upload_date: f.date ?? null, note: f.note ?? null,
+    file_name: f.fileName ?? null, file_type: f.fileType ?? null,
+    file_url: null, // dataUrl kept locally only; storage_path is canonical
+    storage_path: f.storagePath ?? null, file_size: f.size ?? null,
+    status: f.status ?? null,
+  };
+}
+function rowToF(r) {
+  return {
+    id: r.client_id, ownerId: r.uploaded_by,
+    fileName: r.file_name || "", fileType: r.file_type || "",
+    size: r.file_size || 0, dataUrl: "", storagePath: r.storage_path || "",
+    chapter: r.chapter || "1", version: r.version || "النسخة الأولى",
+    date: r.upload_date || "", note: r.note || "",
+    status: r.status || "بانتظار المراجعة",
+    uploadedAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorFiles() { return (await loadSupervisorTable("supervisor_files")).map(rowToF); }
+export async function syncSupervisorFiles(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_files", arr.map(f => fToRow(f, userId)), "uploaded_by");
+}
+export async function uploadSupervisorFile(file) {
+  const userId = await uid();
+  if (!userId || !file) return null;
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const path = `${userId}/supervisor/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || undefined, upsert: false,
+  });
+  if (error) { console.warn("[uploadSupervisorFile]", error); return null; }
+  return path;
+}
+export async function getSupervisorFileUrl(path) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 3600);
+  if (error) { console.warn("[getSupervisorFileUrl]", error); return null; }
+  return data?.signedUrl || null;
+}
+export async function deleteSupervisorFile(path) {
+  if (!path) return;
+  await supabase.storage.from(BUCKET).remove([path]);
+}
+
+// ----- notes -----
+function nToRow(n, userId) {
+  return {
+    created_by: n.ownerId || userId, client_id: String(n.id),
+    chapter: n.chapterId != null ? String(n.chapterId) : null,
+    section: n.sectionId ?? null, note_type: n.type ?? null,
+    content: n.text ?? null, date: n.date ?? null, done: !!n.done,
+  };
+}
+function rowToN(r) {
+  const ch = r.chapter;
+  return {
+    id: r.client_id, ownerId: r.created_by,
+    chapterId: ch != null && /^-?\d+$/.test(ch) ? Number(ch) : ch,
+    sectionId: r.section || "", type: r.note_type || "مصادر ناقصة",
+    text: r.content || "", date: r.date || "", done: !!r.done,
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorNotes() { return (await loadSupervisorTable("supervisor_notes")).map(rowToN); }
+export async function syncSupervisorNotes(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_notes", arr.map(n => nToRow(n, userId)), "created_by");
+}
+
+// ----- meetings -----
+function mToRow(m, userId) {
+  return {
+    created_by: m.ownerId || userId, client_id: String(m.id),
+    meeting_date: m.date ?? null, location: m.place ?? null,
+    summary: m.summary ?? null, decisions: m.decisions ?? null,
+    next_requirements: m.todo ?? null, next_meeting_date: m.nextDate ?? null,
+  };
+}
+function rowToM(r) {
+  return {
+    id: r.client_id, ownerId: r.created_by,
+    date: r.meeting_date || "", place: r.location || "",
+    summary: r.summary || "", decisions: r.decisions || "",
+    todo: r.next_requirements || "", nextDate: r.next_meeting_date || "",
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorMeetings() { return (await loadSupervisorTable("supervisor_meetings")).map(rowToM); }
+export async function syncSupervisorMeetings(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_meetings", arr.map(m => mToRow(m, userId)), "created_by");
+}
+
+// ----- decisions -----
+function dToRow(d, userId) {
+  return {
+    created_by: d.ownerId || userId, client_id: String(d.id),
+    subject: d.subject ?? null, decision_type: d.type ?? null,
+    content: d.text ?? null, date: d.date ?? null,
+  };
+}
+function rowToD(r) {
+  return {
+    id: r.client_id, ownerId: r.created_by,
+    subject: r.subject || "", type: r.decision_type || "تمت الموافقة",
+    text: r.content || "", date: r.date || "",
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorDecisions() { return (await loadSupervisorTable("supervisor_decisions")).map(rowToD); }
+export async function syncSupervisorDecisions(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_decisions", arr.map(d => dToRow(d, userId)), "created_by");
+}
+
+// ----- reports -----
+function rToRow(r, userId) {
+  return {
+    created_by: r.ownerId || userId, client_id: String(r.id),
+    content: r.text ?? null, saved_at: r.date ?? null,
+  };
+}
+function rowToR(r) {
+  return {
+    id: r.client_id, ownerId: r.created_by,
+    date: r.saved_at || "", text: r.content || "",
+    createdAt: r.created_at ? new Date(r.created_at).getTime() : 0,
+  };
+}
+export async function loadSupervisorReports() { return (await loadSupervisorTable("supervisor_reports")).map(rowToR); }
+export async function syncSupervisorReports(arr) {
+  const userId = await uid(); if (!userId) return;
+  await syncSupervisorTable("supervisor_reports", arr.map(r => rToRow(r, userId)), "created_by");
+}

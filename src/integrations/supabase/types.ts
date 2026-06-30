@@ -424,6 +424,7 @@ export type Database = {
       }
       supervisor_decisions: {
         Row: {
+          client_id: string | null
           content: string | null
           created_at: string
           created_by: string | null
@@ -431,8 +432,10 @@ export type Database = {
           decision_type: string | null
           id: string
           subject: string | null
+          updated_at: string
         }
         Insert: {
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -440,8 +443,10 @@ export type Database = {
           decision_type?: string | null
           id?: string
           subject?: string | null
+          updated_at?: string
         }
         Update: {
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -449,45 +454,58 @@ export type Database = {
           decision_type?: string | null
           id?: string
           subject?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
       supervisor_files: {
         Row: {
           chapter: string | null
+          client_id: string | null
           created_at: string
           file_name: string | null
+          file_size: number | null
           file_type: string | null
           file_url: string | null
           id: string
           note: string | null
           status: string | null
+          storage_path: string | null
+          updated_at: string
           upload_date: string | null
           uploaded_by: string | null
           version: string | null
         }
         Insert: {
           chapter?: string | null
+          client_id?: string | null
           created_at?: string
           file_name?: string | null
+          file_size?: number | null
           file_type?: string | null
           file_url?: string | null
           id?: string
           note?: string | null
           status?: string | null
+          storage_path?: string | null
+          updated_at?: string
           upload_date?: string | null
           uploaded_by?: string | null
           version?: string | null
         }
         Update: {
           chapter?: string | null
+          client_id?: string | null
           created_at?: string
           file_name?: string | null
+          file_size?: number | null
           file_type?: string | null
           file_url?: string | null
           id?: string
           note?: string | null
           status?: string | null
+          storage_path?: string | null
+          updated_at?: string
           upload_date?: string | null
           uploaded_by?: string | null
           version?: string | null
@@ -496,6 +514,7 @@ export type Database = {
       }
       supervisor_meetings: {
         Row: {
+          client_id: string | null
           created_at: string
           created_by: string | null
           decisions: string | null
@@ -505,8 +524,10 @@ export type Database = {
           next_meeting_date: string | null
           next_requirements: string | null
           summary: string | null
+          updated_at: string
         }
         Insert: {
+          client_id?: string | null
           created_at?: string
           created_by?: string | null
           decisions?: string | null
@@ -516,8 +537,10 @@ export type Database = {
           next_meeting_date?: string | null
           next_requirements?: string | null
           summary?: string | null
+          updated_at?: string
         }
         Update: {
+          client_id?: string | null
           created_at?: string
           created_by?: string | null
           decisions?: string | null
@@ -527,12 +550,14 @@ export type Database = {
           next_meeting_date?: string | null
           next_requirements?: string | null
           summary?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
       supervisor_notes: {
         Row: {
           chapter: string | null
+          client_id: string | null
           content: string | null
           created_at: string
           created_by: string | null
@@ -541,9 +566,11 @@ export type Database = {
           id: string
           note_type: string | null
           section: string | null
+          updated_at: string
         }
         Insert: {
           chapter?: string | null
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -552,9 +579,11 @@ export type Database = {
           id?: string
           note_type?: string | null
           section?: string | null
+          updated_at?: string
         }
         Update: {
           chapter?: string | null
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -563,12 +592,14 @@ export type Database = {
           id?: string
           note_type?: string | null
           section?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
       supervisor_questions: {
         Row: {
           chapter: string | null
+          client_id: string | null
           content: string | null
           created_at: string
           created_by: string | null
@@ -578,9 +609,11 @@ export type Database = {
           priority: string | null
           status: string | null
           student_reply: string | null
+          updated_at: string
         }
         Insert: {
           chapter?: string | null
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -590,9 +623,11 @@ export type Database = {
           priority?: string | null
           status?: string | null
           student_reply?: string | null
+          updated_at?: string
         }
         Update: {
           chapter?: string | null
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -602,30 +637,37 @@ export type Database = {
           priority?: string | null
           status?: string | null
           student_reply?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
       supervisor_reports: {
         Row: {
+          client_id: string | null
           content: string | null
           created_at: string
           created_by: string | null
           id: string
           saved_at: string | null
+          updated_at: string
         }
         Insert: {
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           saved_at?: string | null
+          updated_at?: string
         }
         Update: {
+          client_id?: string | null
           content?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           saved_at?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
