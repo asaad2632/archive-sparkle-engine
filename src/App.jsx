@@ -2581,28 +2581,33 @@ ${docsContext}
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",color:"white",padding:"0 16px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:60}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:24}}>🗂️</span>
-            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
-          </div>
-          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",marginLeft:6}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minHeight:60,paddingTop:6,paddingBottom:6}}>
+          {/* Left column (visual top-left): Logout above AI model dropdown */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,order:2}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              {userEmail && (
+                <span style={{fontSize:10,color:"#e2e8f0",opacity:0.9,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>👤 {userEmail}</span>
+              )}
+              <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
+                🚪 خروج
+              </button>
+            </div>
+            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي / الأدوات" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",maxWidth:220}}>
               {AI_MODELS.map(m => <option key={m.id} value={m.id} style={{color:"#1e293b"}}>🤖 {m.label}</option>)}
             </select>
+          </div>
+          {/* Center: nav icons */}
+          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center",order:1,flex:1,justifyContent:"center"}}>
             {navItems.map(n=>(
               <button key={n.id} onClick={()=>setPage(n.id)} style={{background:page===n.id?"rgba(255,255,255,0.2)":"transparent",border:"none",color:"white",padding:"5px 9px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",alignItems:"center",gap:3}}>
                 <span>{n.icon}</span><span style={{display:"none"}} className="nav-label">{n.label}</span>
               </button>
             ))}
-            {userEmail && (
-              <span style={{fontSize:11,color:"#e2e8f0",marginRight:8,marginLeft:4,opacity:0.9,maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>
-                👤 {userEmail}
-              </span>
-            )}
-            <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600,marginRight:4}}>
-              🚪 خروج
-            </button>
+          </div>
+          {/* Right (visual): brand */}
+          <div style={{display:"flex",alignItems:"center",gap:10,order:0}}>
+            <span style={{fontSize:24}}>🗂️</span>
+            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
           </div>
         </div>
         {/* nav labels row */}
