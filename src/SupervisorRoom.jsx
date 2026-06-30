@@ -106,6 +106,57 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
   useEffect(() => saveLS(LS.decisions, decisions), [decisions]);
   useEffect(() => saveLS(LS.reports, reports), [reports]);
 
+  useEffect(() => saveLS(LS.questions, questions), [questions]);
+  useEffect(() => saveLS(LS.files, files), [files]);
+  useEffect(() => saveLS(LS.notes, notes), [notes]);
+  useEffect(() => saveLS(LS.meetings, meetings), [meetings]);
+  useEffect(() => saveLS(LS.decisions, decisions), [decisions]);
+  useEffect(() => saveLS(LS.reports, reports), [reports]);
+
+  // ---------- Phase 3d cloud hydration ----------
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [q, f, n, m, d, r] = await Promise.all([
+          loadSupervisorQuestions(),
+          loadSupervisorFiles(),
+          loadSupervisorNotes(),
+          loadSupervisorMeetings(),
+          loadSupervisorDecisions(),
+          loadSupervisorReports(),
+        ]);
+        if (cancelled) return;
+        if (q.length) setQuestions(q);
+        if (f.length) setFiles(f);
+        if (n.length) setNotes(n);
+        if (m.length) setMeetings(m);
+        if (d.length) setDecisions(d);
+        if (r.length) setReports(r);
+      } catch (err) {
+        console.warn("[SupervisorRoom hydration]", err);
+      } finally {
+        hydratedRef.current = true;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const debSyncQ = useMemo(() => debounce(syncSupervisorQuestions, 800), []);
+  const debSyncF = useMemo(() => debounce(syncSupervisorFiles, 800), []);
+  const debSyncN = useMemo(() => debounce(syncSupervisorNotes, 800), []);
+  const debSyncM = useMemo(() => debounce(syncSupervisorMeetings, 800), []);
+  const debSyncD = useMemo(() => debounce(syncSupervisorDecisions, 800), []);
+  const debSyncR = useMemo(() => debounce(syncSupervisorReports, 800), []);
+
+  useEffect(() => { if (hydratedRef.current) debSyncQ(questions); }, [questions, debSyncQ]);
+  useEffect(() => { if (hydratedRef.current) debSyncF(files); }, [files, debSyncF]);
+  useEffect(() => { if (hydratedRef.current) debSyncN(notes); }, [notes, debSyncN]);
+  useEffect(() => { if (hydratedRef.current) debSyncM(meetings); }, [meetings, debSyncM]);
+  useEffect(() => { if (hydratedRef.current) debSyncD(decisions); }, [decisions, debSyncD]);
+  useEffect(() => { if (hydratedRef.current) debSyncR(reports); }, [reports, debSyncR]);
+
   const confirmDelete = (msg, onConfirm) => {
     if (setConfirmDialog) {
       setConfirmDialog({ title: "تأكيد الحذف", message: msg, onConfirm });
