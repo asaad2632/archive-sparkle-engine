@@ -106,12 +106,7 @@ export default function SupervisorRoom({ chapters = [], combinedDocs = [], bibli
   useEffect(() => saveLS(LS.decisions, decisions), [decisions]);
   useEffect(() => saveLS(LS.reports, reports), [reports]);
 
-  useEffect(() => saveLS(LS.questions, questions), [questions]);
-  useEffect(() => saveLS(LS.files, files), [files]);
-  useEffect(() => saveLS(LS.notes, notes), [notes]);
-  useEffect(() => saveLS(LS.meetings, meetings), [meetings]);
-  useEffect(() => saveLS(LS.decisions, decisions), [decisions]);
-  useEffect(() => saveLS(LS.reports, reports), [reports]);
+
 
   // ---------- Phase 3d cloud hydration ----------
   const hydratedRef = useRef(false);
