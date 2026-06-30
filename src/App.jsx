@@ -3535,12 +3535,16 @@ ${docsContext}
                 <div style={{background:"#f8fafc",borderRadius:8,padding:14,border:"0.5px solid #e2e8f0"}}>
                   <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{entityResult.name || entityQuery}</div>
                   <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.9,color:"#1e293b",marginBottom:10}}>{entityResult.definition || "—"}</div>
-                  {entityResult.source && (
+                  {entityResult.source && entityResult.source.url ? (
                     <div style={{fontSize:12,color:"#475569",borderTop:"0.5px solid #e2e8f0",paddingTop:8}}>
                       <strong>المصدر:</strong> {entityResult.source.title || "—"}
                       {entityResult.source.author ? ` — ${entityResult.source.author}` : ""}
                       {entityResult.source.year ? ` (${entityResult.source.year})` : ""}
-                      {entityResult.source.url ? <> — <a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a></> : ""}
+                      {" — "}<a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a>
+                    </div>
+                  ) : (
+                    <div style={{fontSize:12,color:"#b45309",background:"#fef3c7",borderRadius:6,padding:"8px 10px",borderTop:"0.5px solid #fde68a"}}>
+                      ⚠️ لا يوجد مصدر موثّق قابل للتحقق — استخدم التعريف للاسترشاد فقط ولا تستشهد به أكاديمياً قبل التحقق المستقل.
                     </div>
                   )}
                   <button onClick={()=>{
