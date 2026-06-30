@@ -1375,22 +1375,30 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
         messages: [{
           role: "user",
           content: `أنت مساعد بحثي صارم لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
-الباحث يطلب تعريفاً موجزاً وموثوقاً للكيان: "${q}".
+الباحث يطلب تعريفاً أكاديمياً موثوقاً للكيان: "${q}".
 
-قاعدة صارمة لمنع الهلوسة:
-- لا تخترع أي مصدر أو مؤلف أو رابط مطلقاً.
-- لا تذكر مصدراً إلا إذا كنت متيقناً من وجوده الفعلي وقابليته للتحقق (موسوعة بريتانيكا، Qatar Digital Library، الأرشيف البريطاني The National Archives UK، JSTOR، Oxford Reference، كتاب أكاديمي معروف بمؤلفه ودار نشره).
-- إن لم يتوفر مصدر يقيني قابل للتحقق فاضبط "verifiable": false واترك حقول المصدر فارغة ("") ولا تضع رابطاً وهمياً.
-- الرابط — إن وُجد — يجب أن يكون رابطاً حقيقياً معروفاً لديك (لا تخمّن مسارات URL).
+متطلبات التعريف:
+- اكتب تعريفاً مكثفاً في **ثمانية أسطر بالعربية الفصحى** بدقة أكاديمية عالية.
+- اربط الكيان بسياقه التاريخي وبمنطقة الخليج العربي خلال 1939-1945 إن أمكن.
+- لا تستخدم حشواً أو عبارات إنشائية؛ كل سطر يحمل معلومة جوهرية موثّقة.
+
+سياسة الاستشهاد (صارمة جداً — لمنع الهلوسة):
+- يُمنع منعاً باتاً اختراع أي مصدر أو مؤلف أو رابط.
+- يُمنع الاستشهاد بمقالات ويب عامة، مدوّنات، ويكيبيديا، مواقع إخبارية، أو روابط مولّدة.
+- المصادر المقبولة **فقط**: كتب أكاديمية محكّمة، مجلات علمية محكّمة (Journals)، أو رسائل/أطاريح جامعية (Theses/Dissertations) — معروفة بمؤلفها ودار نشرها/جامعتها وسنتها.
+- إن لم تكن متيقّناً 100% من وجود مصدر أكاديمي محكّم قابل للتحقق، اضبط "verifiable": false واترك حقول المصدر فارغة تماماً ("") ولا تضع أي رابط.
+- لا تضع حقل url إلا إذا كان رابطاً أكاديمياً حقيقياً معروفاً (JSTOR، Oxford Academic، Cambridge Core، Brill، dar.aucegypt، QDL، The National Archives UK). خلاف ذلك اتركه "".
 
 أعد JSON خالصاً فقط بدون code fences:
 {
   "name": "${q}",
-  "definition": "تعريف مكثّف في ثلاثة أسطر بالعربية يربط الكيان بسياقه التاريخي وبالخليج العربي 1939-1945 إن أمكن",
+  "definition": "تعريف من ثمانية أسطر بالعربية الفصحى، دقيق أكاديمياً، يربط الكيان بسياق الخليج العربي 1939-1945 إن أمكن",
   "verifiable": true_or_false,
+  "sourceType": "book" | "journal" | "thesis" | "",
   "source": {
     "title": "",
     "author": "",
+    "publisher": "",
     "year": "",
     "url": ""
   }
@@ -1401,12 +1409,14 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
       const clean = text.replace(/```json|```/g,"").trim();
       const m = clean.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(m ? m[0] : clean);
-      // تنظيف نهائي: لو verifiable=false أو لا يوجد رابط — أزل بيانات المصدر تماماً
-      const url = parsed?.source?.url || "";
-      const looksReal = /^https?:\/\/[^\s]+\.[^\s]+/.test(url);
-      if (parsed.verifiable === false || !looksReal) {
+      // فلترة صارمة: نقبل فقط book/journal/thesis مع مؤلف وعنوان، وإلا نُسقط المصدر كلياً
+      const st = (parsed?.sourceType || "").toLowerCase();
+      const hasCore = parsed?.source?.title && parsed?.source?.author;
+      const academicType = ["book","journal","thesis"].includes(st);
+      if (parsed.verifiable === false || !academicType || !hasCore) {
         parsed.verifiable = false;
         parsed.source = null;
+        parsed.sourceType = "";
       }
       setEntityResult(parsed);
     } catch (e) {
