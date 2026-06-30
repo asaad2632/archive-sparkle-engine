@@ -478,6 +478,40 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  // ===== Phase 3c: bibliography / cards / translations / custom_formats =====
+  const bibHydratedRef = useRef(false);
+  const cardsHydratedRef = useRef(false);
+  const trHydratedRef = useRef(false);
+  const fmtHydratedRef = useRef(false);
+  const syncBibDebounced    = useRef(debounce(syncBibliography, 800)).current;
+  const syncCardsDebounced  = useRef(debounce(syncCards, 800)).current;
+  const syncTrDebounced     = useRef(debounce(syncTranslations, 1000)).current;
+  const syncFmtDebounced    = useRef(debounce(syncCustomFormats, 800)).current;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [bib, crd, trs, fmts] = await Promise.all([
+          loadBibliography(), loadCards(), loadTranslations(), loadCustomFormats(),
+        ]);
+        if (cancelled) return;
+        if (bib?.length)  setBibliography(bib);
+        if (crd?.length)  setCards(crd);
+        if (trs?.length)  setSavedTranslations(trs);
+        if (fmts?.length) setCustomFormats(fmts);
+      } catch (e) { console.warn("[phase3c.load]", e); }
+      finally {
+        bibHydratedRef.current = true;
+        cardsHydratedRef.current = true;
+        trHydratedRef.current = true;
+        fmtHydratedRef.current = true;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+
 
 
   const commitChapterEdit = () => {
