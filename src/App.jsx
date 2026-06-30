@@ -2628,6 +2628,7 @@ ${docsContext}
               <div style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:8,padding:"6px 12px",border:"0.5px solid #e2e8f0"}}>
                 💡 اضغط "تعديل" بجانب أي فصل أو مبحث لتغيير عنوانه — ستُحدَّث الوثائق المرتبطة تلقائياً
               </div>
+            </div>
 
             {/* شريط البحث في هيكل الأطروحة */}
             <div style={{background:"white",borderRadius:10,padding:10,border:"0.5px solid #e2e8f0",marginBottom:14,display:"flex",gap:8,alignItems:"center",position:"sticky",top:0,zIndex:5}}>
