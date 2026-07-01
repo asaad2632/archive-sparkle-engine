@@ -3,7 +3,7 @@ import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
 import { callLLM, analyzeDocumentLLM } from "./aiClient";
 import mammoth from "mammoth";
 import SupervisorRoom from "./SupervisorRoom";
-import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce, loadLibrary, syncLibrary, uploadLibraryFile, getLibraryFileUrl, deleteLibraryFile, loadBibliography, syncBibliography, loadCards, syncCards, loadTranslations, syncTranslations, loadCustomFormats, syncCustomFormats } from "./cloudSync";
+import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce, loadLibrary, syncLibrary, uploadLibraryFile, getLibraryFileUrl, deleteLibraryFile, insertLibraryRow, updateLibraryRow, deleteLibraryRow, loadBibliography, syncBibliography, loadCards, syncCards, loadTranslations, syncTranslations, loadCustomFormats, syncCustomFormats } from "./cloudSync";
 import { supabase } from "@/integrations/supabase/client";
 
 // ============================================================
@@ -329,7 +329,12 @@ export default function App() {
     if (isLibId) {
       const realId = id.slice(4);
       const libIdNum = Number(realId);
-      saveLibrary(library.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      const target = library.find(s => String(s.id) === realId || s.id === libIdNum);
+      setLibrary(prev => prev.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      if (target) {
+        if (target.storagePath) deleteLibraryFile(target.storagePath).catch(() => {});
+        deleteLibraryRow(target.id).catch(() => {});
+      }
       if (libSelected && (String(libSelected.id) === realId || libSelected.id === libIdNum)) setLibSelected(null);
     } else if (BASE_DOC_IDS.has(id)) {
       setDeletedBaseDocs(prev => { const n = new Set(prev); n.add(id); return n; });
@@ -339,10 +344,13 @@ export default function App() {
       setDocs(prev => prev.filter(d => d.id !== id));
       const libMatch = library.find(s => s.id === id || String(s.id) === String(id));
       if (libMatch) {
-        saveLibrary(library.filter(s => s.id !== libMatch.id));
+        setLibrary(prev => prev.filter(s => s.id !== libMatch.id));
+        if (libMatch.storagePath) deleteLibraryFile(libMatch.storagePath).catch(() => {});
+        deleteLibraryRow(libMatch.id).catch(() => {});
         if (libSelected?.id === libMatch.id) setLibSelected(null);
       }
     }
+
     if (selectedDoc?.id === id) setSelectedDoc(null);
     // cascade to bibliography
     saveBibliography(prev => prev.filter(b => b.docId !== id && b.id !== id));
@@ -770,10 +778,8 @@ export default function App() {
     showNotif("🗑️ تم حذف المرجع من القائمة");
   };
 
-  // ===== مكتبتي البحثية =====
-  const [library, setLibrary] = useState(() => {
-    try { const v = localStorage.getItem("acadarchiv_library"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
-  });
+  // ===== مكتبتي البحثية (Phase 3b — cloud-backed via library_sources) =====
+  const [library, setLibrary] = useState([]);
   const [libUploading, setLibUploading] = useState(false);
   const [libAnalyzing, setLibAnalyzing] = useState(null); // id المصدر الجاري تحليله
   const [libFilter, setLibFilter] = useState({ query:"", chapterId:"", category:"", priority:"" });
@@ -782,16 +788,11 @@ export default function App() {
   const [libUrlLoading, setLibUrlLoading] = useState(false);
   const libFileRef = useRef(null);
 
-  const saveLibrary = (updated) => {
-    setLibrary(updated);
-    try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
-  };
+  // Legacy alias — retained so existing callers don't crash. Cloud writes now
+  // happen through insertLibraryRow / updateLibraryRow / deleteLibraryRow.
+  const saveLibrary = (updated) => { setLibrary(updated); };
 
-  // Phase 3b: debounced library sync to cloud
-  React.useEffect(() => {
-    if (!libHydratedRef.current) return;
-    syncLibraryDebounced(library);
-  }, [library, syncLibraryDebounced]);
+
 
 
 
@@ -970,14 +971,13 @@ ${JSON.stringify(thesisStructure, null, 2)}
   const MAX_LIB_FILES_BATCH = 20; // up to 20 files at once
   const MAX_LIB_TOTAL_SIZE = 1024 * 1024 * 1024; // 1GB total per batch
 
-  // Functional update for library that persists to localStorage too
+  // Functional update for library — updates state only. Cloud persistence
+  // happens through insertLibraryRow / updateLibraryRow which callers invoke
+  // alongside the state update.
   const updateLibrary = (updater) => {
-    setLibrary(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      try { localStorage.setItem("acadarchiv_library", JSON.stringify(next)); } catch {}
-      return next;
-    });
+    setLibrary(prev => (typeof updater === "function" ? updater(prev) : updater));
   };
+
 
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
@@ -1048,12 +1048,19 @@ ${JSON.stringify(thesisStructure, null, 2)}
         fileData: storedText, // text only; binary content lives in Storage
       };
       updateLibrary(prev => [newSrc, ...prev]);
+      // Persist to Supabase immediately so the row appears in library_sources
+      // and shows up on other browsers via loadLibrary().
+      const { error: insErr } = await insertLibraryRow(newSrc);
+      if (insErr) showNotif("⚠️ فشل حفظ المصدر في السحابة", "error");
 
       const analysis = await analyzeSource(newSrc, payload);
       const analyzed = analysis && (analysis.title || analysis.summary || analysis.chapterId)
         ? { ...newSrc, ...analysis, analyzed: true, status: "تم التحليل ✅" }
         : { ...newSrc, analyzed: false, status: "فشل التحليل ⚠️ — عدّل يدوياً" };
       updateLibrary(prev => prev.map(s => s.id === srcId ? analyzed : s));
+      // Upsert the analyzed version too so title/summary/keywords are stored.
+      await insertLibraryRow(analyzed);
+
     }
     setLibUploading(false);
     showNotif("✅ اكتمل رفع وتحليل الملفات");
@@ -1080,7 +1087,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
         status: "تم التحليل ✅", analyzed: true, ...parsed
       };
-      saveLibrary([newSrc, ...library]);
+      setLibrary(prev => [newSrc, ...prev]);
+      const { error: insErr } = await insertLibraryRow(newSrc);
+      if (insErr) showNotif("⚠️ فشل حفظ الرابط في السحابة", "error");
       setLibUrlInput("");
       showNotif("✅ تمت إضافة المصدر من الرابط");
     } catch {
@@ -1090,18 +1099,25 @@ ${JSON.stringify(thesisStructure, null, 2)}
   };
 
   const updateLibSrc = (id, changes) => {
-    const updated = library.map(s => s.id === id ? { ...s, ...changes } : s);
-    saveLibrary(updated);
+    setLibrary(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
     if (libSelected?.id === id) setLibSelected({ ...libSelected, ...changes });
+    // Fire-and-forget cloud update.
+    updateLibraryRow(id, changes).then(({ error }) => {
+      if (error) showNotif("⚠️ فشل تحديث المصدر في السحابة", "error");
+    });
   };
 
   const deleteLibSrc = (id) => {
     const target = library.find(s => s.id === id);
     if (target?.storagePath) { deleteLibraryFile(target.storagePath).catch(() => {}); }
-    saveLibrary(library.filter(s => s.id !== id));
+    setLibrary(prev => prev.filter(s => s.id !== id));
     if (libSelected?.id === id) setLibSelected(null);
+    deleteLibraryRow(id).then(({ error }) => {
+      if (error) showNotif("⚠️ فشل حذف المصدر من السحابة", "error");
+    });
     showNotif("🗑️ تم حذف المصدر");
   };
+
 
   // Expose a signed-URL helper for the library UI (PDF/image preview from Storage).
   const openLibStorageFile = async (path) => {
