@@ -329,7 +329,12 @@ export default function App() {
     if (isLibId) {
       const realId = id.slice(4);
       const libIdNum = Number(realId);
-      saveLibrary(library.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      const target = library.find(s => String(s.id) === realId || s.id === libIdNum);
+      setLibrary(prev => prev.filter(s => String(s.id) !== realId && s.id !== libIdNum));
+      if (target) {
+        if (target.storagePath) deleteLibraryFile(target.storagePath).catch(() => {});
+        deleteLibraryRow(target.id).catch(() => {});
+      }
       if (libSelected && (String(libSelected.id) === realId || libSelected.id === libIdNum)) setLibSelected(null);
     } else if (BASE_DOC_IDS.has(id)) {
       setDeletedBaseDocs(prev => { const n = new Set(prev); n.add(id); return n; });
@@ -339,10 +344,13 @@ export default function App() {
       setDocs(prev => prev.filter(d => d.id !== id));
       const libMatch = library.find(s => s.id === id || String(s.id) === String(id));
       if (libMatch) {
-        saveLibrary(library.filter(s => s.id !== libMatch.id));
+        setLibrary(prev => prev.filter(s => s.id !== libMatch.id));
+        if (libMatch.storagePath) deleteLibraryFile(libMatch.storagePath).catch(() => {});
+        deleteLibraryRow(libMatch.id).catch(() => {});
         if (libSelected?.id === libMatch.id) setLibSelected(null);
       }
     }
+
     if (selectedDoc?.id === id) setSelectedDoc(null);
     // cascade to bibliography
     saveBibliography(prev => prev.filter(b => b.docId !== id && b.id !== id));
