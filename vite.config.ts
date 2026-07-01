@@ -12,4 +12,8 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Force Netlify preset for public cloud deployment.
+  nitro: {
+    preset: "netlify",
+  },
 });

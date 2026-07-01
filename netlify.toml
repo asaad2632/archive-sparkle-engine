@@ -1,0 +1,11 @@
+[build]
+  command = "bun run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Nitro's `netlify` preset generates the static public assets in `dist/` and
+# emits the SSR handler to `.netlify/functions-internal/server` — both of which
+# Netlify auto-picks up. `_redirects` and `_headers` are auto-generated inside
+# `dist/`, so no manual redirect rules are needed here.

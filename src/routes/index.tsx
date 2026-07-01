@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import App from "../../App.jsx";
+import App from "../App.jsx";
 
 function ClientApp() {
   const [mounted, setMounted] = useState(false);
@@ -9,6 +9,6 @@ function ClientApp() {
   return <App />;
 }
 
-export const Route = createFileRoute("/_authenticated/")({
+export const Route = createFileRoute("/")({
   component: ClientApp,
 });
