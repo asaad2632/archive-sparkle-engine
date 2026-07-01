@@ -292,13 +292,66 @@ export async function syncLibrary(libraryArr) {
   if (!userId) return;
   const rows = libraryArr.map(s => libToRow(s, userId));
   if (rows.length) {
-    await supabase.from("library_sources").upsert(rows, { onConflict: "user_id,client_id" });
+    const { error } = await supabase.from("library_sources").upsert(rows, { onConflict: "user_id,client_id" });
+    if (error) console.warn("[syncLibrary:upsert]", error);
   }
   const keepIds = rows.map(r => r.client_id);
   let del = supabase.from("library_sources").delete().eq("user_id", userId).not("client_id", "is", null);
   if (keepIds.length) del = del.not("client_id", "in", `(${keepIds.map(id => `"${id}"`).join(",")})`);
-  await del;
+  const { error: delError } = await del;
+  if (delError) console.warn("[syncLibrary:delete]", delError);
 }
+
+// Direct per-row writes (Phase 3b hardening — used by My Library UI so data
+// lands in library_sources immediately without waiting for debounce).
+export async function insertLibraryRow(src) {
+  const userId = await uid();
+  if (!userId) return { error: new Error("no-user") };
+  const row = libToRow(src, userId);
+  const { error } = await supabase.from("library_sources").upsert(row, { onConflict: "user_id,client_id" });
+  if (error) console.warn("[insertLibraryRow]", error);
+  return { error };
+}
+
+export async function updateLibraryRow(clientId, changes) {
+  const userId = await uid();
+  if (!userId) return { error: new Error("no-user") };
+  // Build a partial row using libToRow mapping, then keep only fields present in `changes`.
+  const full = libToRow({ id: clientId, ...changes }, userId);
+  const patch = {};
+  const map = {
+    fileName:"file_name", fileType:"file_type", fileSize:"file_size", uploadDate:"upload_date",
+    status:"status", analyzed:"analyzed", title:"title", author:"author", year:"year",
+    language:"language", sourceType:"source_type", chapterId:"chapter_id", sectionId:"section_id",
+    subSectionId:"sub_section_id", priority:"priority", importantPages:"important_pages",
+    summary:"summary", keywords:"keywords", whyImportant:"why_important", howToUse:"how_to_use",
+    keyPoints:"key_points", storagePath:"storage_path", notes:"notes",
+  };
+  for (const k of Object.keys(changes)) {
+    if (map[k]) patch[map[k]] = full[map[k]];
+  }
+  patch.updated_at = new Date().toISOString();
+  const { error } = await supabase
+    .from("library_sources")
+    .update(patch)
+    .eq("user_id", userId)
+    .eq("client_id", String(clientId));
+  if (error) console.warn("[updateLibraryRow]", error);
+  return { error };
+}
+
+export async function deleteLibraryRow(clientId) {
+  const userId = await uid();
+  if (!userId) return { error: new Error("no-user") };
+  const { error } = await supabase
+    .from("library_sources")
+    .delete()
+    .eq("user_id", userId)
+    .eq("client_id", String(clientId));
+  if (error) console.warn("[deleteLibraryRow]", error);
+  return { error };
+}
+
 
 // ==================== Phase 3c: bibliography / cards / translations / custom_formats / researcher_analysis ====================
 
