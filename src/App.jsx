@@ -1,10 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AI_MODELS, getSelectedModel, setSelectedModel } from "./config";
-import { callLLM, analyzeDocumentLLM } from "./aiClient";
-import mammoth from "mammoth";
-import SupervisorRoom from "./SupervisorRoom";
-import { loadPhase3a, syncChapters, syncUserDocs, syncDeletedBaseDocs, debounce, loadLibrary, syncLibrary, uploadLibraryFile, getLibraryFileUrl, deleteLibraryFile, insertLibraryRow, updateLibraryRow, deleteLibraryRow, loadBibliography, syncBibliography, loadCards, syncCards, loadTranslations, syncTranslations, loadCustomFormats, syncCustomFormats } from "./cloudSync";
-import { supabase } from "@/integrations/supabase/client";
+import { callLLM } from "./aiClient";
 
 // ============================================================
 // بيانات الفصول والمباحث — مستخرجة من خطة السمنار
@@ -146,236 +142,27 @@ const DOCS_FROM_INDEX = [
 ];
 
 const COUNTRIES = ["السعودية","الكويت","البحرين","قطر","الإمارات/الساحل المتصالح","عُمان","بريطانيا","الولايات المتحدة","ألمانيا"];
-
-// ============= UNIVERSAL SOURCE-TYPE SCHEMA =============
-// كل تبويب في التطبيق يقرأ من هنا. تعديل واحد ينعكس على كل التبويبات.
-const SOURCE_TYPES = [
-  "كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه",
-  "بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة",
-  "موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي",
-  // legacy aliases (kept so old saved data keeps working)
-  "كتاب","رسالة علمية","بحث","مقالة","تقرير"
-];
-const CATEGORIES = SOURCE_TYPES;
-
-// أقسام قائمة المراجع النهائية (الترتيب مُلزِم)
-const BIB_SECTIONS_ORDER = [
-  "الوثائق الأرشيفية والمصادر الأولية",
-  "الكتب العربية والأجنبية",
-  "الرسائل والأطاريح",
-  "البحوث والمجلات العلمية",
-  "المؤتمرات العلمية",
-  "الصحف",
-  "المواقع الإلكترونية والموسوعات",
-];
-
-function getBibSectionForType(cat) {
-  const c = (cat || "").trim();
-  if (["مصدر أولي","وثيقة أرشيفية","وثائق أرشيفية","تقرير رسمي","تقرير","archival","archive"].includes(c)) return "الوثائق الأرشيفية والمصادر الأولية";
-  if (["كتاب","كتاب عربي","كتاب أجنبي","book","books"].includes(c)) return "الكتب العربية والأجنبية";
-  if (["رسالة ماجستير","أطروحة دكتوراه","رسالة علمية","thesis","dissertation"].includes(c)) return "الرسائل والأطاريح";
-  if (["بحث","بحث علمي","مجلة علمية","مقالة","article","journal"].includes(c)) return "البحوث والمجلات العلمية";
-  if (["مؤتمر علمي","مؤتمر","conference","proceedings"].includes(c)) return "المؤتمرات العلمية";
-  if (["صحيفة","صحف","جريدة","newspaper","newspapers"].includes(c)) return "الصحف";
-  if (["موقع إلكتروني","رابط","website","موسوعة","encyclopedia","url"].includes(c)) return "المواقع الإلكترونية والموسوعات";
-  return "الوثائق الأرشيفية والمصادر الأولية";
-}
-
-// نسّق اسم المؤلف: "Asaad Hamid Kanaan" → "Kanaan, Asaad Hamid"
-function formatAuthorLastFirstUtil(fullName) {
-  if (!fullName || !fullName.trim()) return "[مؤلف غير معروف]";
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return fullName.trim();
-  const last = parts[parts.length - 1];
-  const rest = parts.slice(0, -1).join(" ");
-  return `${last}, ${rest}`;
-}
-
-// مولّد الاستشهاد الأكاديمي العربي حسب نوع المصدر.
-// withPage=true → هامش (فيه ص##)؛ withPage=false → دخل ببليوغرافيا (بدون رقم صفحة، مؤلف Last,First).
-function buildArabicCitation(doc, pageNum = "", withPage = true) {
-  const cat = doc.category || doc.sourceType || doc.type || "وثيقة أرشيفية";
-  const rawAuthor = doc.author || "";
-  const author = withPage
-    ? (rawAuthor || "[اسم المؤلف]")
-    : formatAuthorLastFirstUtil(rawAuthor);
-  const title = doc.title || "[العنوان]";
-  const year  = doc.year  || doc.date || "د.ت";
-  const page  = pageNum    || "[رقم الصفحة]";
-  const pageSuffix = withPage ? `، ص${page}` : "";
-
-  // كتاب (عربي / أجنبي / مطلق)
-  if (cat === "كتاب" || cat === "كتاب عربي" || cat === "كتاب أجنبي") {
-    const edition   = doc.edition   || "1";
-    const place     = doc.place     || "[مكان النشر]";
-    const publisher = doc.publisher || "[دار النشر]";
-    return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})${pageSuffix}.`;
-  }
-  // رسالة / أطروحة
-  if (cat === "رسالة ماجستير" || cat === "أطروحة دكتوراه" || cat === "رسالة علمية") {
-    const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
-    const college = doc.college    || "[الكلية]";
-    const univ    = doc.university || "[الجامعة]";
-    return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}${pageSuffix}.`;
-  }
-  // بحث / مجلة
-  if (cat === "بحث" || cat === "بحث علمي" || cat === "مجلة علمية" || cat === "مقالة") {
-    const journal = doc.journal || doc.journalName || "[اسم المجلة]";
-    const vol     = doc.volume  || "[م]";
-    const iss     = doc.issue   || "[ع]";
-    return `${author}، "${title}"، ${journal}، م${vol}، ع${iss}، (${year})${pageSuffix}.`;
-  }
-  // مؤتمر علمي
-  if (cat === "مؤتمر علمي" || cat === "مؤتمر") {
-    const conf  = doc.conference || doc.conferenceName || "[اسم المؤتمر]";
-    const place = doc.place || "[المكان]";
-    return `${author}، "${title}"، وقائع ${conf}، ${place}، ${year}${pageSuffix}.`;
-  }
-  // صحيفة
-  if (cat === "صحيفة") {
-    const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
-    const issue     = doc.issue     || "[رقم العدد]";
-    const date      = doc.date      || year;
-    return `صحيفة ${newspaper}، العدد (${issue})، ${date}${pageSuffix}.`;
-  }
-  // موقع إلكتروني
-  if (cat === "موقع إلكتروني" || cat === "رابط") {
-    const url        = doc.url || doc.link || "[الرابط]";
-    const visitDate  = doc.visitDate || doc.accessDate || "[تاريخ الزيارة]";
-    return `${author}، ${title}، متاح على: ${url}، تاريخ الزيارة: ${visitDate}${pageSuffix}.`;
-  }
-  // موسوعة
-  if (cat === "موسوعة") {
-    const vol     = doc.volume    || "[م]";
-    const edition = doc.edition   || "[الطبعة]";
-    const pub     = doc.publisher || "[الناشر]";
-    return `${title}، م${vol}، ط${edition}، (${pub}، ${year})${pageSuffix}.`;
-  }
-  // وثيقة أرشيفية / مصدر أولي / تقرير رسمي
-  if (cat === "وثيقة أرشيفية" || cat === "مصدر أولي" || cat === "تقرير رسمي" || cat === "تقرير") {
-    const ref = doc.archiveRef || doc.archiveNumber || "[الرقم الأرشيفي]";
-    return `${title}، ${ref}، ${year}${pageSuffix}.`;
-  }
-  return `${author}، ${title}، (${year})${pageSuffix}.`;
-}
-
-// كشف نوع المصدر من رابط URL (للاستيراد التلقائي).
-function detectSourceTypeFromUrl(url = "") {
-  const u = url.toLowerCase();
-  if (/qdl\.qa|nationalarchives|ior\//.test(u)) return "وثيقة أرشيفية";
-  if (/jstor|sciencedirect|springer|tandfonline|doi\.org|researchgate/.test(u)) return "بحث علمي";
-  if (/wikipedia|britannica|encyclopedia|maarefa|marefa/.test(u)) return "موسوعة";
-  if (/aljazeera|bbc|reuters|nytimes|theguardian|alarabiya|alhayat|asharqalawsat|newspaper|news\./.test(u)) return "صحيفة";
-  if (/google\.com\/books|books\.google|archive\.org\/details/.test(u)) return "كتاب";
-  if (/thesis|dissertation|shamaa|dar\.bibalex/.test(u)) return "رسالة ماجستير";
-  return "موقع إلكتروني";
-}
+const CATEGORIES = ["مصدر أولي","كتاب","رسالة علمية","بحث","صحيفة","مقالة","تقرير"];
 
 function genRef(doc, fmt) {
-  // الصيغ الأكاديمية الأجنبية (للاستخدام الإنجليزي)
-  if (fmt === "APA" || fmt === "Chicago" || fmt === "MLA") {
-    const a = doc.author || "مصدر أولي";
-    const y = doc.year   || "د.ت";
-    const t = doc.title;
-    const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
-    if (fmt === "APA") return `${a} (${y}). ${t}.${r}`;
-    return `${a}. "${t}."${r} ${y}.`;
-  }
-  // افتراضياً: الاستشهاد العربي حسب نوع المصدر (بدون رقم صفحة)
-  return buildArabicCitation(doc, "", false);
+  const a = doc.author || "مصدر أولي";
+  const y = doc.year || "د.ت";
+  const t = doc.title;
+  const r = doc.archiveRef ? ` [${doc.archiveRef}]` : "";
+  if (fmt==="APA") return `${a} (${y}). ${t}.${r}`;
+  if (fmt==="Chicago") return `${a}. "${t}."${r} ${y}.`;
+  return `${a}. "${t}."${r} ${y}.`;
 }
-
 
 export default function App() {
   const [page, setPage] = useState("home");
   const [aiModel, setAiModel] = useState(getSelectedModel());
-  const BASE_DOC_IDS = React.useMemo(() => new Set(DOCS_FROM_INDEX.map(d => d.id)), []);
-  const [deletedBaseDocs, setDeletedBaseDocs] = useState(() => {
-    try {
-      const v = localStorage.getItem("acadarchiv_deleted_base_docs");
-      return new Set(v && v !== "undefined" ? JSON.parse(v) : []);
-    } catch { return new Set(); }
-  });
-  const [docs, setDocs] = useState(() => {
-    let deleted = new Set();
-    try {
-      const dv = localStorage.getItem("acadarchiv_deleted_base_docs");
-      deleted = new Set(dv && dv !== "undefined" ? JSON.parse(dv) : []);
-    } catch {}
-    let userDocs = [];
-    try {
-      const v = localStorage.getItem("acadarchiv_user_docs");
-      userDocs = v && v !== "undefined" ? JSON.parse(v) : [];
-    } catch {}
-    return [...userDocs, ...DOCS_FROM_INDEX.filter(d => !deleted.has(d.id))];
-  });
-  React.useEffect(() => {
-    try {
-      const userDocs = docs.filter(d => !BASE_DOC_IDS.has(d.id));
-      localStorage.setItem("acadarchiv_user_docs", JSON.stringify(userDocs));
-    } catch {}
-  }, [docs, BASE_DOC_IDS]);
-  React.useEffect(() => {
-    try { localStorage.setItem("acadarchiv_deleted_base_docs", JSON.stringify([...deletedBaseDocs])); } catch {}
-  }, [deletedBaseDocs]);
-
-
-
-  // Unified delete: handles base docs, user-added docs, and library items.
-  // Also cascades to bibliography and clears selection.
-  const handleDeleteSource = (id) => {
-    if (id == null) return;
-    const isLibId = typeof id === "string" && id.startsWith("lib-");
-    if (isLibId) {
-      const realId = id.slice(4);
-      const libIdNum = Number(realId);
-      const target = library.find(s => String(s.id) === realId || s.id === libIdNum);
-      setLibrary(prev => prev.filter(s => String(s.id) !== realId && s.id !== libIdNum));
-      if (target) {
-        if (target.storagePath) deleteLibraryFile(target.storagePath).catch(() => {});
-        deleteLibraryRow(target.id).catch(() => {});
-      }
-      if (libSelected && (String(libSelected.id) === realId || libSelected.id === libIdNum)) setLibSelected(null);
-    } else if (BASE_DOC_IDS.has(id)) {
-      setDeletedBaseDocs(prev => { const n = new Set(prev); n.add(id); return n; });
-      setDocs(prev => prev.filter(d => d.id !== id));
-    } else {
-      // user-added doc (also catches library items mistakenly passed by raw id)
-      setDocs(prev => prev.filter(d => d.id !== id));
-      const libMatch = library.find(s => s.id === id || String(s.id) === String(id));
-      if (libMatch) {
-        setLibrary(prev => prev.filter(s => s.id !== libMatch.id));
-        if (libMatch.storagePath) deleteLibraryFile(libMatch.storagePath).catch(() => {});
-        deleteLibraryRow(libMatch.id).catch(() => {});
-        if (libSelected?.id === libMatch.id) setLibSelected(null);
-      }
-    }
-
-    if (selectedDoc?.id === id) setSelectedDoc(null);
-    // cascade to bibliography
-    saveBibliography(prev => prev.filter(b => b.docId !== id && b.id !== id));
-    showNotif("🗑️ تم حذف المصدر");
-  };
-  const deleteUserDoc = handleDeleteSource;
-
-  const askDeleteSource = (id) => setConfirmDialog({
-    title: "تأكيد الحذف",
-    message: "هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",
-    onConfirm: () => handleDeleteSource(id),
-  });
+  const [docs, setDocs] = useState(DOCS_FROM_INDEX);
   const [searchFilters, setSearchFilters] = useState({ query:"", chapterId:"", priority:"", isNew:"", status:"" });
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [aiResult, setAiResult] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [notif, setNotif] = useState(null);
-  const [userEmail, setUserEmail] = useState("");
-  useEffect(()=>{
-    supabase.auth.getUser().then(({data})=>setUserEmail(data?.user?.email||""));
-  },[]);
-  const handleLogout = useCallback(async ()=>{
-    try { await supabase.auth.signOut(); } catch(e){}
-    window.location.href = "/auth";
-  },[]);
   const [exportFormat, setExportFormat] = useState("Chicago");
   const [exportSelected, setExportSelected] = useState([]);
   const [exportText, setExportText] = useState("");
@@ -397,21 +184,10 @@ export default function App() {
       "أطروحة دكتوراه": "{المؤلف}. {العنوان}. أطروحة دكتوراه، {الجامعة}، {السنة}م.",
     }
   });
-  const EMPTY_ADD_FORM = { title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"وثيقة أرشيفية",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع", edition:"", place:"", publisher:"", college:"", university:"", journal:"", volume:"", issue:"", pages:"", conference:"", newspaper:"", url:"", visitDate:"", agency:"" };
-  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM);
-  const [exportTypeFilter, setExportTypeFilter] = useState("");
-  const [exportSearch, setExportSearch] = useState("");
-  const [bulkFootnoteModal, setBulkFootnoteModal] = useState(null); // {items:[{doc,page}], generated:[{doc,text}]|null}
+  const [addForm, setAddForm] = useState({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
   const [urlImport, setUrlImport] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlResult, setUrlResult] = useState(null);
-  const [urlPreview, setUrlPreview] = useState(null); // {title,sourceType,relevance,footnoteSummary,raw}
-  const [multiUrlPreview, setMultiUrlPreview] = useState(null); // {items:[{...editable fields, chapterId}]}
-  const [bookExtractLoading, setBookExtractLoading] = useState(false);
-  const [structureSearch, setStructureSearch] = useState("");
-  const [entityQuery, setEntityQuery] = useState("");
-  const [entityLoading, setEntityLoading] = useState(false);
-  const [entityResult, setEntityResult] = useState(null); // {definition, source, verifiable}
   const [tgMode, setTgMode] = useState(false);
   const [tgQuery, setTgQuery] = useState("");
   const [tgResults, setTgResults] = useState([]);
@@ -432,102 +208,6 @@ export default function App() {
     setChapters(updated);
     try { localStorage.setItem("acadarchiv_chapters", JSON.stringify(updated)); } catch {}
   };
-
-  // ===== Phase 3a: Supabase cloud sync (chapters + user docs + deletion blacklist) =====
-  const cloudHydratedRef = useRef(false);
-  const syncUserDocsDebounced = useRef(debounce(syncUserDocs, 600)).current;
-  const syncChaptersDebounced = useRef(debounce(syncChapters, 600)).current;
-  const syncDeletedDebounced  = useRef(debounce(syncDeletedBaseDocs, 600)).current;
-  const syncLibraryDebounced  = useRef(debounce(syncLibrary, 800)).current;
-  const libHydratedRef = useRef(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await loadPhase3a(CHAPTERS_DATA);
-        if (cancelled || !data) { cloudHydratedRef.current = true; return; }
-        setChapters(data.chapters);
-        setDeletedBaseDocs(data.deletedBaseDocs);
-        setDocs([
-          ...data.userDocs,
-          ...DOCS_FROM_INDEX.filter(d => !data.deletedBaseDocs.has(d.id)),
-        ]);
-      } catch (e) {
-        console.warn("[cloudSync] load failed, using localStorage fallback", e);
-      } finally {
-        cloudHydratedRef.current = true;
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    if (!cloudHydratedRef.current) return;
-    const userDocs = docs.filter(d => !BASE_DOC_IDS.has(d.id));
-    syncUserDocsDebounced(userDocs);
-  }, [docs, BASE_DOC_IDS, syncUserDocsDebounced]);
-
-  React.useEffect(() => {
-    if (!cloudHydratedRef.current) return;
-    syncChaptersDebounced(chapters);
-  }, [chapters, syncChaptersDebounced]);
-
-  React.useEffect(() => {
-    if (!cloudHydratedRef.current) return;
-    syncDeletedDebounced(deletedBaseDocs);
-  }, [deletedBaseDocs, syncDeletedDebounced]);
-
-  // Phase 3b: load library from cloud once on mount
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const items = await loadLibrary();
-        if (cancelled) return;
-        if (items && items.length) setLibrary(items);
-      } catch (e) { console.warn("[loadLibrary]", e); }
-      finally { libHydratedRef.current = true; }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  // ===== Phase 3c: bibliography / cards / translations / custom_formats =====
-  const bibHydratedRef = useRef(false);
-  const cardsHydratedRef = useRef(false);
-  const trHydratedRef = useRef(false);
-  const fmtHydratedRef = useRef(false);
-  const syncBibDebounced    = useRef(debounce(syncBibliography, 800)).current;
-  const syncCardsDebounced  = useRef(debounce(syncCards, 800)).current;
-  const syncTrDebounced     = useRef(debounce(syncTranslations, 1000)).current;
-  const syncFmtDebounced    = useRef(debounce(syncCustomFormats, 800)).current;
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [bib, crd, trs, fmts] = await Promise.all([
-          loadBibliography(), loadCards(), loadTranslations(), loadCustomFormats(),
-        ]);
-        if (cancelled) return;
-        if (bib?.length)  setBibliography(bib);
-        if (crd?.length)  setCards(crd);
-        if (trs?.length)  setSavedTranslations(trs);
-        if (fmts?.length) setCustomFormats(fmts);
-      } catch (e) { console.warn("[phase3c.load]", e); }
-      finally {
-        bibHydratedRef.current = true;
-        cardsHydratedRef.current = true;
-        trHydratedRef.current = true;
-        fmtHydratedRef.current = true;
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-
-
 
   const commitChapterEdit = () => {
     if (!editingChapter) return;
@@ -563,92 +243,49 @@ export default function App() {
     showNotif("✅ تم تحديث عنوان المبحث وإعادة فرز الوثائق تلقائياً");
   };
 
-  // ===== إضافة مبحث / فقرة فرعية ديناميكياً =====
-  const [addingSecChId, setAddingSecChId]   = useState(null);
-  const [newSecForm, setNewSecForm]         = useState({ title: "", num: "" });
-  const [addingSubSecId, setAddingSubSecId] = useState(null);
-  const [newSubForm, setNewSubForm]         = useState({ title: "" });
-
-  const openAddSection = (chId) => {
-    const ch = chapters.find(c => c.id === chId);
-    const mainSecs = ch ? ch.sections.filter(s => !/[a-z]/i.test(s.id)) : [];
-    setAddingSecChId(chId);
-    setNewSecForm({ title: "", num: String(mainSecs.length + 1) });
-    setAddingSubSecId(null);
-  };
-
-  const submitAddSection = (chId) => {
-    const title = (newSecForm.title || "").trim();
-    if (!title) { showNotif("⚠️ عنوان المبحث مطلوب", "error"); return; }
-    const ch = chapters.find(c => c.id === chId);
-    if (!ch) return;
-    const num = (newSecForm.num || "").trim() || String(ch.sections.filter(s => !/[a-z]/i.test(s.id)).length + 1);
-    const newId = `${chId}-${num}`;
-    if (ch.sections.some(s => s.id === newId)) { showNotif("⚠️ رقم المبحث مستخدم بالفعل", "error"); return; }
-    const fullTitle = title.startsWith("م") ? title : `م${num}: ${title}`;
-    const updated = chapters.map(c =>
-      c.id === chId ? { ...c, sections: [...c.sections, { id: newId, title: fullTitle, userAdded: true }] } : c
-    );
-    saveChapters(updated);
-    setAddingSecChId(null);
-    setNewSecForm({ title: "", num: "" });
-    showNotif("✅ تم إضافة المبحث");
-  };
-
-  const openAddSubSection = (secId) => {
-    setAddingSubSecId(secId);
-    setNewSubForm({ title: "" });
-    setAddingSecChId(null);
-  };
-
-  const submitAddSubSection = (chId, secId) => {
-    const title = (newSubForm.title || "").trim();
-    if (!title) { showNotif("⚠️ عنوان الفقرة الفرعية مطلوب", "error"); return; }
-    const ch = chapters.find(c => c.id === chId);
-    if (!ch) return;
-    const subs = ch.sections.filter(s => s.id !== secId && s.id.startsWith(secId) && /^[a-z]+$/i.test(s.id.slice(secId.length)));
-    const letter = String.fromCharCode(97 + subs.length);
-    const newId = `${secId}${letter}`;
-    const updated = chapters.map(c =>
-      c.id === chId ? { ...c, sections: [...c.sections, { id: newId, title, userAdded: true }] } : c
-    );
-    saveChapters(updated);
-    setAddingSubSecId(null);
-    setNewSubForm({ title: "" });
-    showNotif("✅ تم إضافة الفقرة الفرعية");
-  };
-
-  const askDeleteSection = (chId, secId) => {
-    setConfirmDialog({
-      title: "تأكيد الحذف",
-      message: "هل تريد حذف هذا المبحث وكل فقراته الفرعية؟ لا يمكن التراجع.",
-      onConfirm: () => {
-        const updated = chapters.map(c =>
-          c.id === chId
-            ? { ...c, sections: c.sections.filter(s => {
-                if (s.id === secId) return false;
-                if (s.id.startsWith(secId) && /^[a-z]+$/i.test(s.id.slice(secId.length))) return false;
-                return true;
-              }) }
-            : c
-        );
-        saveChapters(updated);
-        showNotif("🗑️ تم حذف المبحث");
-      }
-    });
-  };
-
-
-
   // ===== الميزة 2: نافذة توليد الهامش الفوري =====
   const [footnoteModal, setFootnoteModal]     = useState(null); // الوثيقة المستهدفة
-  const [confirmDialog, setConfirmDialog]     = useState(null); // {title,message,onConfirm}
   const [footnotePageNum, setFootnotePageNum] = useState("");
   const [footnoteResult, setFootnoteResult]   = useState("");
   const footnotePageRef = useRef(null);
 
   const generateFootnote = (doc, pageNum) => {
-    return buildArabicCitation(doc, pageNum, true);
+    const cat = doc.category || doc.sourceType || "وثيقة أرشيفية";
+    const author  = doc.author  || "[اسم المؤلف]";
+    const title   = doc.title   || "[العنوان]";
+    const year    = doc.year    || "[السنة]";
+    const page    = pageNum     || "[رقم الصفحة]";
+
+    if (cat === "كتاب") {
+      const edition   = doc.edition   || "1";
+      const place     = doc.place     || "[مكان النشر]";
+      const publisher = doc.publisher || "[دار النشر]";
+      return `${author}، ${title}، ط${edition}، (${place}: ${publisher}، ${year})، ص${page}.`;
+    }
+    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
+      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
+      const college = doc.college    || "[الكلية]";
+      const univ    = doc.university || "[الجامعة]";
+      return `${author}، "${title}"، (${degree})، ${college}، ${univ}، ${year}، ص${page}.`;
+    }
+    if (cat === "صحيفة") {
+      const newspaper = doc.newspaper || doc.title || "[اسم الصحيفة]";
+      const issue     = doc.issue     || "[رقم العدد]";
+      const date      = doc.date      || year;
+      return `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}، ص${page}.`;
+    }
+    if (cat === "مقالة") {
+      const journal = doc.journal || "[اسم المجلة]";
+      const vol     = doc.volume  || "[م]";
+      const iss     = doc.issue   || "[ع]";
+      return `${author}، "${title}"، ${journal}، م${vol}، ع${iss} (${year})، ص${page}.`;
+    }
+    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
+      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
+      return `${title}، ${ref}، ${year}، ص${page}.`;
+    }
+    // افتراضي
+    return `${author}، ${title}، (${year})، ص${page}.`;
   };
 
   const openFootnoteModal = (doc) => {
@@ -658,70 +295,91 @@ export default function App() {
     setTimeout(() => footnotePageRef.current?.focus(), 100);
   };
 
-  // التحقق من رقم الصفحة قبل أي معالجة
-  const validatePageNumber = () => {
-    const p = (footnotePageNum || "").trim();
-    if (!p) {
-      showNotif("⚠️ رقم الصفحة مطلوب قبل توليد الهامش أو إضافة المرجع", "error");
-      setTimeout(() => footnotePageRef.current?.focus(), 50);
-      return false;
-    }
-    return true;
-  };
-
   const handleGenerateFootnote = () => {
     if (!footnoteModal) return;
-    if (!validatePageNumber()) return;
-    const result = generateFootnote(footnoteModal, footnotePageNum.trim());
+    const result = generateFootnote(footnoteModal, footnotePageNum);
     setFootnoteResult(result);
   };
 
-  // نسخ + تسجيل في المراجع النهائية بضغطة واحدة (يجبر إدخال رقم الصفحة أولاً)
-  const copyFootnoteAndRegister = async () => {
-    if (!footnoteModal) return;
-    if (!validatePageNumber()) return;
-    const result = (footnoteResult && footnoteResult.trim())
-      ? footnoteResult
-      : generateFootnote(footnoteModal, footnotePageNum.trim());
-    addToBibliography(footnoteModal, result);
-    try {
-      await navigator.clipboard.writeText(result);
-      showNotif("✅ تم نسخ الهامش وإضافة المصدر للمراجع النهائية");
-    } catch {
-      showNotif("✅ تمت إضافة المصدر للمراجع النهائية — انسخ الهامش يدوياً إذا لم تسمح الحافظة", "warn");
-    }
-    setTimeout(() => setFootnoteModal(null), 2000);
+  const copyFootnoteAndRegister = () => {
+    if (!footnoteResult) return;
+    navigator.clipboard.writeText(footnoteResult).then(() => {
+      // إرسال نسخة للقائمة النهائية تلقائياً
+      addToBibliography(footnoteModal, footnoteResult);
+      showNotif("✅ تم نسخ الهامش وإضافة المصدر لقائمة المراجع النهائية");
+      setFootnoteModal(null);
+    });
   };
-
 
   // ===== الميزة 3: قائمة المصادر والمراجع النهائية =====
   const [bibliography, setBibliography] = useState(() => {
     try { const v = localStorage.getItem("acadarchiv_bibliography"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
   });
 
-  // يقبل مصفوفة أو دالة محدِّث
-  const saveBibliography = (updater) => {
-    setBibliography(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(next)); } catch {}
-      return next;
-    });
+  const saveBibliography = (updated) => {
+    setBibliography(updated);
+    try { localStorage.setItem("acadarchiv_bibliography", JSON.stringify(updated)); } catch {}
   };
 
-  // aliases للحفاظ على التوافق الخلفي
-  const formatAuthorLastFirst = formatAuthorLastFirstUtil;
-  const getBibSection = getBibSectionForType;
+  // تحويل اسم المؤلف: "أسعد حامد كنعان" → "كنعان، أسعد حامد"
+  const formatAuthorLastFirst = (fullName) => {
+    if (!fullName || fullName.trim() === "") return "[مؤلف غير معروف]";
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length === 1) return fullName;
+    const last  = parts[parts.length - 1];
+    const rest  = parts.slice(0, parts.length - 1).join(" ");
+    return `${last}، ${rest}`;
+  };
+
+  // تحديد قسم المصدر في القائمة النهائية
+  const getBibSection = (cat) => {
+    if (!cat) return "أخرى";
+    if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") return "الوثائق الأرشيفية";
+    if (cat === "كتاب")          return "الكتب";
+    if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") return "الرسائل والأطاريح";
+    if (cat === "صحيفة")         return "الصحف";
+    if (cat === "مقالة")         return "المقالات";
+    if (cat === "تقرير" || cat === "بحث") return "التقارير والبحوث";
+    return "أخرى";
+  };
 
   const addToBibliography = (doc, footnoteText) => {
     if (!doc) return;
     const cat     = doc.category || doc.sourceType || "وثيقة أرشيفية";
-    const section = getBibSectionForType(cat);
+    const section = getBibSection(cat);
     const author  = doc.author || "";
-    const authorFormatted = formatAuthorLastFirstUtil(author);
+    const authorFormatted = formatAuthorLastFirst(author);
     const year    = doc.year   || "د.ت";
     const title   = doc.title  || "";
-    // بناء نص المرجع بدون رقم الصفحة باستخدام البنّاء الموحَّد
-    const bibEntry = buildArabicCitation(doc, "", false);
+
+    // بناء نص المرجع بدون رقم الصفحة
+    let bibEntry = "";
+    if (cat === "كتاب") {
+      const edition   = doc.edition   || "1";
+      const place     = doc.place     || "[مكان النشر]";
+      const publisher = doc.publisher || "[دار النشر]";
+      bibEntry = `${authorFormatted}، ${title}، ط${edition}، (${place}: ${publisher}، ${year}).`;
+    } else if (cat === "رسالة علمية" || cat === "أطروحة دكتوراه") {
+      const degree  = cat === "أطروحة دكتوراه" ? "أطروحة دكتوراه غير منشورة" : "رسالة ماجستير غير منشورة";
+      const college = doc.college    || "[الكلية]";
+      const univ    = doc.university || "[الجامعة]";
+      bibEntry = `${authorFormatted}، "${title}"، (${degree})، ${college}، ${univ}، ${year}.`;
+    } else if (cat === "صحيفة") {
+      const newspaper = doc.newspaper || title || "[اسم الصحيفة]";
+      const issue     = doc.issue     || "[رقم العدد]";
+      const date      = doc.date      || year;
+      bibEntry = `صحيفة ${newspaper}، العدد (${issue})، التاريخ ${date}.`;
+    } else if (cat === "مقالة") {
+      const journal = doc.journal || "[اسم المجلة]";
+      const vol     = doc.volume  || "[م]";
+      const iss     = doc.issue   || "[ع]";
+      bibEntry = `${authorFormatted}، "${title}"، ${journal}، م${vol}، ع${iss} (${year}).`;
+    } else if (cat === "مصدر أولي" || cat === "وثيقة أرشيفية") {
+      const ref = doc.archiveRef || "[الرقم الأرشيفي]";
+      bibEntry = `${title}، ${ref}، ${year}.`;
+    } else {
+      bibEntry = `${authorFormatted}، ${title}، (${year}).`;
+    }
 
     const newEntry = {
       id:        Date.now() + Math.random(),
@@ -732,26 +390,33 @@ export default function App() {
       year,
       category:  cat,
       bibEntry,
-      sortKey:   author ? authorFormatted : title,
+      sortKey:   authorFormatted || title,
       addedAt:   new Date().toLocaleDateString("ar-IQ"),
     };
 
-    saveBibliography(prev => {
-      const dup = prev.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
-      if (dup) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return prev; }
-      return [...prev, newEntry];
-    });
+    // منع التكرار
+    const exists = bibliography.some(b => b.docId === doc.id || b.bibEntry === bibEntry);
+    if (exists) { showNotif("ℹ️ المصدر موجود مسبقاً في قائمة المراجع"); return; }
+
+    saveBibliography([...bibliography, newEntry]);
   };
 
-  // ترتيب المراجع: أقسام عربية ثم أبجدي
-  const BIBO_SECTIONS_ORDER = BIB_SECTIONS_ORDER;
-
+  // ترتيب المراجع: أقسام ثم أبجدي
+  const BIBO_SECTIONS_ORDER = [
+    "الوثائق الأرشيفية",
+    "الكتب",
+    "الرسائل والأطاريح",
+    "الصحف",
+    "المقالات",
+    "التقارير والبحوث",
+    "أخرى",
+  ];
 
   const getBibGrouped = () => {
     const grouped = {};
     BIBO_SECTIONS_ORDER.forEach(s => { grouped[s] = []; });
     bibliography.forEach(b => {
-      const sec = grouped[b.section] ? b.section : getBibSection(b.category);
+      const sec = grouped[b.section] ? b.section : "أخرى";
       grouped[sec].push(b);
     });
     BIBO_SECTIONS_ORDER.forEach(s => {
@@ -774,268 +439,141 @@ export default function App() {
   };
 
   const removeFromBibliography = (id) => {
-    saveBibliography(prev => prev.filter(b => b.id !== id));
+    saveBibliography(bibliography.filter(b => b.id !== id));
     showNotif("🗑️ تم حذف المرجع من القائمة");
   };
 
-  // ===== مكتبتي البحثية (Phase 3b — cloud-backed via library_sources) =====
-  const [library, setLibrary] = useState([]);
-  const [libUploading, setLibUploading] = useState(false);
-  const [libAnalyzing, setLibAnalyzing] = useState(null); // id المصدر الجاري تحليله
-  const [libFilter, setLibFilter] = useState({ query:"", chapterId:"", category:"", priority:"" });
-  const [libSelected, setLibSelected] = useState(null);
-  const [libUrlInput, setLibUrlInput] = useState("");
-  const [libUrlLoading, setLibUrlLoading] = useState(false);
-  const libFileRef = useRef(null);
+  // ===== مكتبتي البحثية =====// ===== مكتبتي البحثية =====
+const [library, setLibrary] = useState([]);
+const [libUploading, setLibUploading] = useState(false);
+const [libAnalyzing, setLibAnalyzing] = useState(null);
+const [libFilter, setLibFilter] = useState({ query:"", chapterId:"", category:"", priority:"" });
+const [libSelected, setLibSelected] = useState(null);
+const [libUrlInput, setLibUrlInput] = useState("");
+const [libUrlLoading, setLibUrlLoading] = useState(false);
+const libFileRef = useRef(null);
 
-  // Legacy alias — retained so existing callers don't crash. Cloud writes now
-  // happen through insertLibraryRow / updateLibraryRow / deleteLibraryRow.
-  const saveLibrary = (updated) => { setLibrary(updated); };
-
-
-
-
-
-  // Build a structured view of the live `chapters` state for AI prompts.
-  // Sub-sections are detected by trailing lowercase letter (e.g. "2-1a" under "2-1").
-  const buildThesisStructure = () => {
-    return chapters.map(ch => {
-      const tops = ch.sections.filter(s => !/[a-z]$/i.test(String(s.id)));
-      return {
-        chapterId: ch.id,
-        chapterTitle: ch.titleAr,
-        sections: tops.map(s => ({
-          sectionId: s.id,
-          sectionTitle: s.title,
-          subSections: ch.sections
-            .filter(sub => sub.id !== s.id && String(sub.id).startsWith(String(s.id)) && /[a-z]$/i.test(String(sub.id)))
-            .map(sub => ({ subId: sub.id, subTitle: sub.title })),
-        })),
-      };
-    });
+// تحميل المكتبة من Supabase عند بدء التشغيل
+useEffect(() => {
+  const loadLibrary = async () => {
+    try {
+      const { supabase } = await import('./integrations/supabase/client');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('library_sources')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!error && data) setLibrary(data);
+    } catch (e) { console.error('loadLibrary error:', e); }
   };
+  loadLibrary();
+}, []);
 
-  // Validate AI selection against the live structure; fall back gracefully.
-  const reconcileClassification = (parsed) => {
-    if (!parsed || typeof parsed !== "object") return parsed;
-    let chId = typeof parsed.chapterId === "string" ? parseInt(parsed.chapterId) : parsed.chapterId;
-    const ch = chapters.find(c => c.id === chId) || chapters[0];
-    if (!ch) return parsed;
-    chId = ch.id;
-    let secId = parsed.sectionId || "";
-    let subId = parsed.subSectionId || parsed.subId || "";
-    const allSecIds = ch.sections.map(s => String(s.id));
-    if (subId && !allSecIds.includes(String(subId))) subId = "";
-    if (secId && !allSecIds.includes(String(secId))) secId = "";
-    // If subId given but secId missing, derive secId by stripping trailing letter
-    if (!secId && subId) secId = String(subId).replace(/[a-z]$/i, "");
-    // Fallback to first top-level section
-    if (!secId) {
-      const firstTop = ch.sections.find(s => !/[a-z]$/i.test(String(s.id))) || ch.sections[0];
-      secId = firstTop?.id || "";
+const saveLibrary = async (updated) => {
+  setLibrary(updated);
+};
+
+const addToLibrary = async (newSource) => {
+  try {
+    const { supabase } = await import('./integrations/supabase/client');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('library_sources')
+      .insert([{ ...newSource, user_id: user.id }])
+      .select()
+      .single();
+    if (!error && data) {
+      setLibrary(prev => [data, ...prev]);
     }
-    const secObj = ch.sections.find(s => String(s.id) === String(secId));
-    const subObj = ch.sections.find(s => String(s.id) === String(subId));
-    return {
-      ...parsed,
-      chapterId: chId,
-      chapterName: parsed.chapterName || ch.titleAr,
-      sectionId: secId,
-      sectionName: parsed.sectionName || secObj?.title || "",
-      subSectionId: subId || null,
-      subSectionName: parsed.subSectionName || subObj?.title || "",
-      classificationReason: parsed.reason || parsed.classificationReason || "",
-      classificationConfidence: parsed.confidence || parsed.classificationConfidence || "",
-    };
-  };
+  } catch (e) { console.error('addToLibrary error:', e); }
+};
 
-  const analyzeSource = async (src, payload) => {
-    // payload: { text } for md/txt/docx, or { base64, mimeType } for pdf
+const deleteFromLibrary = async (id) => {
+  try {
+    const { supabase } = await import('./integrations/supabase/client');
+    await supabase.from('library_sources').delete().eq('id', id);
+    setLibrary(prev => prev.filter(s => s.id !== id));
+  } catch (e) { console.error('deleteFromLibrary error:', e); }
+};
+
+const updateInLibrary = async (id, changes) => {
+  try {
+    const { supabase } = await import('./integrations/supabase/client');
+    await supabase.from('library_sources').update(changes).eq('id', id);
+    setLibrary(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
+  } catch (e) { console.error('updateInLibrary error:', e); }
+};
+
+
+
+  const analyzeSource = async (src, fileText) => {
     setLibAnalyzing(src.id);
-    const thesisStructure = buildThesisStructure();
     const prompt = `أنت مساعد بحثي متخصص في تاريخ "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
 
-حلّل هذا المصدر (الملف مرفق${payload?.base64 ? " كـ PDF — استخرج النص منه ولو كان ممسوحاً ضوئياً (OCR)" : ""}).
-
-هذا هو الهيكل الكامل للأطروحة بفصولها ومباحثها وفقراتها (اختر **فقط** من المعرفات الموجودة أدناه ولا تخترع جديدة):
-${JSON.stringify(thesisStructure, null, 2)}
+حلّل هذا المصدر وصنّفه للأطروحة التي تتكون من أربعة فصول:
+- الفصل الأول: أوضاع الخليج عشية الحرب (1918-1939)
+- الفصل الثاني: الأهمية الاستراتيجية والعسكرية
+- الفصل الثالث: أثر الحرب على الأوضاع السياسية
+- الفصل الرابع: التحولات الاقتصادية في الخليج
 
 اسم الملف: ${src.fileName}
 نوع الملف: ${src.fileType}
+المحتوى (أول 3000 حرف):
+${fileText.substring(0, 3000)}
 
-بناءً على محتوى المصدر، حدد:
-1. رقم الفصل الأنسب (chapterId)
-2. معرف المبحث الأنسب (sectionId) من القائمة أعلاه
-3. معرف الفقرة الفرعية (subSectionId) إن وُجدت فقرة مناسبة، وإلا اتركها null
-
-أجب بـ JSON فقط بدون أي نص آخر وبدون code fences:
+أجب بـ JSON فقط بدون أي نص آخر:
 {
-  "title": "عنوان المصدر المستخلص من المحتوى",
+  "title": "عنوان المصدر المستخلص",
   "author": "المؤلف",
   "year": "السنة (رقم أو null)",
   "language": "عربي أو إنجليزي أو أخرى",
-  "sourceType": "كتاب أو رسالة علمية أو بحث أو مقالة أو صحيفة أو وثيقة أرشيفية أو تقرير أو أطروحة دكتوراه",
+  "sourceType": "كتاب أو رسالة علمية أو بحث أو مقالة أو صحيفة أو وثيقة أرشيفية أو تقرير أو أطروحة دكتوراه أو موقع إلكتروني",
   "chapterId": 1,
-  "chapterName": "اسم الفصل المناسب",
-  "sectionId": "1-1",
-  "sectionName": "نص المبحث",
-  "subSectionId": null,
-  "subSectionName": "",
-  "confidence": "high أو medium أو low",
-  "reason": "سبب اختيار هذا المبحث تحديداً بناءً على محتوى المصدر",
+  "chapterName": "اسم الفصل",
   "sections": ["م1: ...", "م2: ..."],
   "priority": "★★★ أو ★★ أو ★",
-  "importantPages": "صفحات مهمة مع أرقامها مثل: 45-67، 102، 230-245",
-  "summary": "ملخص أكاديمي موجز (4-5 أسطر) مستخلص من المحتوى الفعلي",
-  "keywords": ["كلمة1","كلمة2","كلمة3","كلمة4","كلمة5"],
+  "importantPages": "الصفحات المهمة مثل: 45-67، 102، 230-245",
+  "summary": "ملخص أكاديمي موجز (4-5 أسطر)",
+  "keywords": ["كلمة1", "كلمة2", "كلمة3"],
   "whyImportant": "لماذا هذا المصدر مهم للأطروحة",
-  "howToUse": "كيف تستخدمه في الكتابة",
-  "keyPoints": [{"page":"12","point":"نقطة مهمة"},{"page":"45-47","point":"..."}]
+  "howToUse": "كيف تستخدمه في الكتابة"
 }`;
 
     try {
-      const data = await analyzeDocumentLLM({
-        prompt,
-        fileName: src.fileName,
-        mimeType: payload?.mimeType,
-        base64: payload?.base64,
-        text: payload?.text,
-        max_tokens: 2200,
-      });
+      const data = await callLLM({
+          max_tokens: 1500,
+          messages: [{ role: "user", content: prompt }]
+        });
       const text = data.content?.map(c => c.text || "").join("") || "{}";
       const clean = text.replace(/```json|```/g, "").trim();
-      const match = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(match ? match[0] : clean);
-      return reconcileClassification(parsed);
-    } catch (err) {
-      console.error("[analyzeSource]", err);
+      const parsed = JSON.parse(clean);
+      return parsed;
+    } catch {
       return null;
     } finally {
       setLibAnalyzing(null);
     }
   };
 
-  // Standalone classifier — used by URL import and manual add to map a source
-  // into the live chapter/section/sub-section structure.
-  const classifyToStructure = async ({ title, author = "", summary = "", sourceType = "", extraContext = "" }) => {
-    const thesisStructure = buildThesisStructure();
-    try {
-      const data = await callLLM({
-        max_tokens: 600,
-        messages: [{
-          role: "user",
-          content: `صنّف هذا المصدر داخل هيكل الأطروحة التالية. اختر **فقط** من المعرفات الموجودة ولا تخترع جديدة.
-
-الهيكل:
-${JSON.stringify(thesisStructure, null, 2)}
-
-بيانات المصدر:
-- العنوان: ${title || "—"}
-- المؤلف: ${author || "—"}
-- النوع: ${sourceType || "—"}
-- ملخص/سياق: ${summary || extraContext || "—"}
-
-أجب بـ JSON فقط بدون code fences:
-{"chapterId":1,"chapterName":"","sectionId":"","sectionName":"","subSectionId":null,"subSectionName":"","confidence":"high|medium|low","reason":""}`
-        }]
-      });
-      const text = data.content?.map(c => c.text || "").join("") || "{}";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const match = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(match ? match[0] : clean);
-      return reconcileClassification(parsed);
-    } catch (err) {
-      console.error("[classifyToStructure]", err);
-      return null;
-    }
-  };
-
-  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => {
-      const result = e.target.result || "";
-      const comma = result.indexOf(",");
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-  const readFileAsText = (file) => new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => resolve(e.target.result || "");
-    r.onerror = reject;
-    r.readAsText(file, "utf-8");
-  });
-
-  const MAX_LIB_FILE_SIZE = 500 * 1024 * 1024; // 500MB per file
-  const MAX_LIB_FILES_BATCH = 20; // up to 20 files at once
-  const MAX_LIB_TOTAL_SIZE = 1024 * 1024 * 1024; // 1GB total per batch
-
-  // Functional update for library — updates state only. Cloud persistence
-  // happens through insertLibraryRow / updateLibraryRow which callers invoke
-  // alongside the state update.
-  const updateLibrary = (updater) => {
-    setLibrary(prev => (typeof updater === "function" ? updater(prev) : updater));
-  };
-
-
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
-    const fileArr = Array.from(files);
-    if (fileArr.length > MAX_LIB_FILES_BATCH) {
-      showNotif(`⚠️ يمكن رفع حتى ${MAX_LIB_FILES_BATCH} ملف دفعة واحدة فقط`, "error");
-      return;
-    }
-    const totalSize = fileArr.reduce((s, f) => s + f.size, 0);
-    if (totalSize > MAX_LIB_TOTAL_SIZE) {
-      showNotif(`⚠️ الحجم الإجمالي يتجاوز 1 غيغابايت — قلل عدد الملفات`, "error");
-      return;
-    }
     setLibUploading(true);
-    const IMG_EXT = ["jpg","jpeg","png","webp","gif","tif","tiff","bmp","heic"];
-    for (const file of fileArr) {
-      const ext = (file.name.split(".").pop() || "").toLowerCase();
-      const isImage = IMG_EXT.includes(ext);
-      if (!["pdf","md","txt","docx", ...IMG_EXT].includes(ext)) {
-        showNotif(`⚠️ ${file.name} — يُقبل: PDF, DOCX, MD, TXT, صور (JPG/PNG/TIFF…)`, "error");
+    for (const file of Array.from(files)) {
+      const ext = file.name.split(".").pop().toLowerCase();
+      if (!["pdf","md","txt","docx"].includes(ext)) {
+        showNotif(`⚠️ الملف ${file.name} — يُقبل فقط PDF و MD و TXT`, "error");
         continue;
       }
-      if (file.size > MAX_LIB_FILE_SIZE) {
-        showNotif(`حجم الملف كبير جداً — الحد الأقصى 500 ميغابايت`, "error");
-        continue;
-      }
-
-      // Extract content per type — unified pipeline: every file becomes either
-      // raw text OR a base64 blob sent to Gemini multimodal (handles OCR natively).
-      let payload = null;
-      let storedText = null;
-      try {
-        if (ext === "pdf") {
-          const base64 = await readFileAsBase64(file);
-          payload = { base64, mimeType: "application/pdf" };
-        } else if (isImage) {
-          const base64 = await readFileAsBase64(file);
-          const mime = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
-          payload = { base64, mimeType: mime };
-        } else if (ext === "docx") {
-          const arrayBuffer = await file.arrayBuffer();
-          const { value } = await mammoth.extractRawText({ arrayBuffer });
-          storedText = value || "";
-          payload = { text: storedText };
-        } else {
-          storedText = await readFileAsText(file);
-          payload = { text: storedText };
-        }
-      } catch (err) {
-        console.error("[lib-upload-extract]", err);
-        showNotif(`⚠️ تعذّر قراءة ${file.name}`, "error");
-        continue;
-      }
+      const reader = new FileReader();
+      const fileText = await new Promise(resolve => {
+        reader.onload = e => resolve(e.target.result);
+        if (ext === "pdf") reader.readAsDataURL(file);
+        else reader.readAsText(file, "utf-8");
+      });
 
       const srcId = Date.now() + Math.random();
-      // Phase 3b: upload original file to thesis-files bucket (fire-and-forget — analysis continues)
-      let storagePath = null;
-      try { storagePath = await uploadLibraryFile(file); } catch (e) { console.warn("[storage-upload]", e); }
       const newSrc = {
         id: srcId, fileName: file.name, fileType: ext, fileSize: file.size,
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
@@ -1043,53 +581,43 @@ ${JSON.stringify(thesisStructure, null, 2)}
         title:"", author:"", year:"", language:"", sourceType:"",
         chapterId: null, sections:[], priority:"★★",
         importantPages:"", summary:"", keywords:[], whyImportant:"", howToUse:"",
-        keyPoints: [],
-        storagePath,
-        fileData: storedText, // text only; binary content lives in Storage
+        fileData: ext !== "pdf" ? fileText : null,
       };
-      updateLibrary(prev => [newSrc, ...prev]);
-      // Persist to Supabase immediately so the row appears in library_sources
-      // and shows up on other browsers via loadLibrary().
-      const { error: insErr } = await insertLibraryRow(newSrc);
-      if (insErr) showNotif("⚠️ فشل حفظ المصدر في السحابة", "error");
+      const withNew = [newSrc, ...library];
+      saveLibrary(withNew);
 
-      const analysis = await analyzeSource(newSrc, payload);
-      const analyzed = analysis && (analysis.title || analysis.summary || analysis.chapterId)
+      // تحليل
+      let textForAnalysis = ext === "pdf" ? `[ملف PDF: ${file.name}]` : fileText;
+      const analysis = await analyzeSource(newSrc, textForAnalysis);
+      const analyzed = analysis
         ? { ...newSrc, ...analysis, analyzed: true, status: "تم التحليل ✅" }
         : { ...newSrc, analyzed: false, status: "فشل التحليل ⚠️ — عدّل يدوياً" };
-      updateLibrary(prev => prev.map(s => s.id === srcId ? analyzed : s));
-      // Upsert the analyzed version too so title/summary/keywords are stored.
-      await insertLibraryRow(analyzed);
-
+      saveLibrary(prev => {
+        const _v = localStorage.getItem("acadarchiv_library"); const cur = _v && _v !== "undefined" ? JSON.parse(_v) : [];
+        return cur.map(s => s.id === srcId ? analyzed : s);
+      });
     }
     setLibUploading(false);
     showNotif("✅ اكتمل رفع وتحليل الملفات");
   };
 
-
   const handleLibUrlImport = async () => {
     if (!libUrlInput.trim()) return;
     setLibUrlLoading(true);
     try {
-      const thesisStructure = buildThesisStructure();
       const data = await callLLM({
-          max_tokens: 1800,
+          max_tokens: 1500,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: `اذهب لهذا الرابط واستخرج بيانات المصدر لأطروحة "الخليج العربي في الحرب العالمية الثانية 1939-1945":\n${libUrlInput}\n\nهذا هو هيكل الأطروحة (اختر فقط من المعرفات أدناه ولا تخترع جديدة):\n${JSON.stringify(thesisStructure, null, 2)}\n\nأجب بـ JSON فقط بدون code fences:\n{"title":"","author":"","year":null,"language":"","sourceType":"","chapterId":1,"chapterName":"","sectionId":"","sectionName":"","subSectionId":null,"subSectionName":"","confidence":"high|medium|low","reason":"","sections":[],"priority":"★★","importantPages":"","summary":"","keywords":[],"whyImportant":"","howToUse":"","fileName":"${libUrlInput}"}` }]
+          messages: [{ role: "user", content: `اذهب لهذا الرابط واستخرج بيانات المصدر لأطروحة "الخليج العربي في الحرب العالمية الثانية 1939-1945":\n${libUrlInput}\n\nأجب بـ JSON فقط:\n{"title":"","author":"","year":null,"language":"","sourceType":"","chapterId":1,"chapterName":"","sections":[],"priority":"★★","importantPages":"","summary":"","keywords":[],"whyImportant":"","howToUse":"","fileName":"${libUrlInput}"}` }]
         });
       const text = data.content?.map(c => c.text || "").join("") || "{}";
-      const clean = text.replace(/```json|```/g, "").trim();
-      const match = clean.match(/\{[\s\S]*\}/);
-      const rawParsed = JSON.parse(match ? match[0] : clean);
-      const parsed = reconcileClassification(rawParsed);
+      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
       const newSrc = {
         id: Date.now(), fileName: libUrlInput, fileType: "url",
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
         status: "تم التحليل ✅", analyzed: true, ...parsed
       };
-      setLibrary(prev => [newSrc, ...prev]);
-      const { error: insErr } = await insertLibraryRow(newSrc);
-      if (insErr) showNotif("⚠️ فشل حفظ الرابط في السحابة", "error");
+      saveLibrary([newSrc, ...library]);
       setLibUrlInput("");
       showNotif("✅ تمت إضافة المصدر من الرابط");
     } catch {
@@ -1099,38 +627,22 @@ ${JSON.stringify(thesisStructure, null, 2)}
   };
 
   const updateLibSrc = (id, changes) => {
-    setLibrary(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
+    const updated = library.map(s => s.id === id ? { ...s, ...changes } : s);
+    saveLibrary(updated);
     if (libSelected?.id === id) setLibSelected({ ...libSelected, ...changes });
-    // Fire-and-forget cloud update.
-    updateLibraryRow(id, changes).then(({ error }) => {
-      if (error) showNotif("⚠️ فشل تحديث المصدر في السحابة", "error");
-    });
   };
 
   const deleteLibSrc = (id) => {
-    const target = library.find(s => s.id === id);
-    if (target?.storagePath) { deleteLibraryFile(target.storagePath).catch(() => {}); }
-    setLibrary(prev => prev.filter(s => s.id !== id));
+    saveLibrary(library.filter(s => s.id !== id));
     if (libSelected?.id === id) setLibSelected(null);
-    deleteLibraryRow(id).then(({ error }) => {
-      if (error) showNotif("⚠️ فشل حذف المصدر من السحابة", "error");
-    });
     showNotif("🗑️ تم حذف المصدر");
-  };
-
-
-  // Expose a signed-URL helper for the library UI (PDF/image preview from Storage).
-  const openLibStorageFile = async (path) => {
-    const url = await getLibraryFileUrl(path);
-    if (url) window.open(url, "_blank", "noopener");
-    else showNotif("⚠️ تعذّر فتح الملف", "error");
   };
 
   const filteredLib = library.filter(s => {
     const q = libFilter.query.toLowerCase();
     if (q && !s.title?.toLowerCase().includes(q) && !s.author?.toLowerCase().includes(q) && !s.fileName?.toLowerCase().includes(q) && !(s.keywords||[]).join(" ").toLowerCase().includes(q)) return false;
     if (libFilter.chapterId && s.chapterId !== parseInt(libFilter.chapterId)) return false;
-    if (libFilter.category && (s.sourceType || s.category) !== libFilter.category) return false;
+    if (libFilter.category && s.sourceType !== libFilter.category) return false;
     if (libFilter.priority && s.priority !== libFilter.priority) return false;
     return true;
   });
@@ -1139,33 +651,6 @@ ${JSON.stringify(thesisStructure, null, 2)}
     setNotif({msg, type});
     setTimeout(()=>setNotif(null), 3500);
   };
-
-  // ===== Unified source list: merges archival docs + My Library items =====
-  // Library items are mapped to a doc-shaped record so they appear automatically
-  // in Thesis Structure, Home Dashboard counts, Export page, and AI Assistant.
-  const combinedDocs = (() => {
-    const libAsDocs = (library || []).map(s => {
-      // Prefer the most specific placement: sub-section > section > legacy sections[0]
-      const secId = s.subSectionId || s.sectionId || (Array.isArray(s.sections) && s.sections[0]) || "";
-      return {
-        id: typeof s.id === "string" && s.id.startsWith("lib-") ? s.id : `lib-${s.id}`,
-        title: s.title || s.fileName || "مصدر من المكتبة",
-        archiveRef: s.archiveRef || s.fileName || "",
-        chapterId: typeof s.chapterId === "string" ? parseInt(s.chapterId) : s.chapterId,
-        sectionId: secId,
-        section: s.section || (Array.isArray(s.sections) ? s.sections.join("، ") : ""),
-        priority: s.priority || "★★",
-        category: s.sourceType || s.category || "كتاب",
-        isNew: true,
-        status: s.status || (s.analyzed ? "تم التحليل ✅" : "لم يُراجع"),
-        notes: s.summary || s.whyImportant || "",
-        author: s.author || "",
-        year: s.year || "",
-        fromLibrary: true,
-      };
-    });
-    return [...docs, ...libAsDocs];
-  })();
 
   const filtered = docs.filter(d => {
     const q = searchFilters.query.toLowerCase();
@@ -1181,11 +666,11 @@ ${JSON.stringify(thesisStructure, null, 2)}
   });
 
   const stats = {
-    total: combinedDocs.length,
-    highP: combinedDocs.filter(d=>d.priority==="★★★").length,
-    newDocs: combinedDocs.filter(d=>d.isNew).length,
-    unreviewed: combinedDocs.filter(d=>d.status==="لم يُراجع").length,
-    byChapter: CHAPTERS_DATA.map(ch=>({ ...ch, count: combinedDocs.filter(d=>d.chapterId===ch.id).length })),
+    total: docs.length,
+    highP: docs.filter(d=>d.priority==="★★★").length,
+    newDocs: docs.filter(d=>d.isNew).length,
+    unreviewed: docs.filter(d=>d.status==="لم يُراجع").length,
+    byChapter: CHAPTERS_DATA.map(ch=>({ ...ch, count: docs.filter(d=>d.chapterId===ch.id).length })),
   };
 
   // استيراد من رابط URL عبر Claude AI
@@ -1194,251 +679,51 @@ ${JSON.stringify(thesisStructure, null, 2)}
     setUrlLoading(true);
     setUrlResult(null);
     try {
-      const structureHint = chapters.map(ch => `- [${ch.id}] ${ch.titleAr}`).join("\n");
       const data = await callLLM({
-          max_tokens:3500,
+          max_tokens:1000,
+          tools:[{ type:"web_search_20250305", name:"web_search" }],
           messages:[{
             role:"user",
-            content:`اقرأ محتوى الصفحة على الرابط التالي واستخرج **جميع** المصادر/المراجع المذكورة فيها (قائمة كتب، ببليوغرافيا، نتائج بحث، فهرس وثائق… استهدف 10-20 عنصراً إن وُجدت). لا تختر مصدراً واحداً فقط.
-الرابط: ${urlImport}
+            content:`اذهب إلى هذا الرابط وأخرج لي بيانات الوثيقة الأرشيفية المذكورة فيه بصيغة JSON فقط بدون أي شرح:
+رابط: ${urlImport}
 
-هيكل الأطروحة (للترشيح):
-${structureHint}
-
-أعد JSON خالصاً فقط بدون أي شرح وبدون \`\`\`:
+JSON المطلوب (أعده فقط بدون backticks):
 {
-  "sources": [
-    {
-      "title": "العنوان",
-      "author": "المؤلف (اسم العائلة، الاسم الأول)",
-      "year": "السنة أو null",
-      "publisher": "الناشر",
-      "place": "مكان النشر",
-      "edition": "الطبعة",
-      "journal": "المجلة إن كان مقالاً",
-      "volume": "المجلد",
-      "issue": "العدد",
-      "pages": "الصفحات",
-      "university": "الجامعة إن كان رسالة",
-      "archiveRef": "رقم الأرشيف إن وُجد",
-      "url": "رابط الوصول إن وُجد",
-      "sourceType": "أحد: كتاب عربي|كتاب أجنبي|رسالة ماجستير|أطروحة دكتوراه|بحث علمي|مجلة علمية|مؤتمر علمي|صحيفة|موقع إلكتروني|موسوعة|وثيقة أرشيفية|تقرير رسمي|مصدر أولي",
-      "suggestedChapterId": رقم_الفصل_المقترح_أو_null,
-      "relevance": "سطر واحد عن صلته بأطروحة الخليج العربي 1939-1945",
-      "footnoteSummary": "ملخص مقترح للحاشية (سطران)"
-    }
-  ]
+  "title": "عنوان الوثيقة بالعربية",
+  "author": "المؤلف أو الجهة",
+  "year": "السنة (رقم فقط أو null)",
+  "archiveRef": "رقم الأرشيف مثل IOR/R/15/...",
+  "category": "نوع الوثيقة",
+  "notes": "ملاحظة مختصرة عن محتواها",
+  "keywords": "كلمات مفتاحية مفيدة"
 }
-
-إن وجدت مصدراً واحداً فقط فأعده داخل المصفوفة. اعتمد على بيانات الصفحة فعلياً ولا تختلق مصادر.`
+إذا كان الرابط لصفحة QDL أو أرشيف بريطاني، استخرج المعلومات منه.`
           }]
         });
       const text = data.content?.map(c=>c.text||"").join("") || "";
-      const clean = text.replace(/```json|```/g,"").trim();
-      const m = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(m ? m[0] : clean);
-      const rawItems = Array.isArray(parsed.sources) ? parsed.sources : (parsed.title ? [parsed] : []);
-      if (rawItems.length === 0) {
-        showNotif("⚠️ لم يتم العثور على مصادر قابلة للاستخراج", "warn");
-        setUrlLoading(false);
-        return;
+      try {
+        const clean = text.replace(/```json|```/g,"").trim();
+        const parsed = JSON.parse(clean);
+        setUrlResult(parsed);
+        setAddForm(prev => ({
+          ...prev,
+          title: parsed.title || "",
+          author: parsed.author || "",
+          year: parsed.year || "",
+          archiveRef: parsed.archiveRef || "",
+          category: parsed.category || "مصدر أولي",
+          notes: parsed.notes || "",
+          keywords: parsed.keywords || "",
+        }));
+        setPage("add");
+        showNotif("✅ تم استخراج بيانات الوثيقة — راجع النموذج وأكمل البيانات");
+      } catch {
+        showNotif("⚠️ لم يتمكن من استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
       }
-      const items = rawItems.map((s, i) => ({
-        ...s,
-        _idx: i,
-        sourceType: s.sourceType || detectSourceTypeFromUrl(s.url || urlImport),
-        url: s.url || urlImport,
-        chapterId: s.suggestedChapterId || "",
-        keep: true,
-      }));
-      if (items.length === 1) {
-        const parsedOne = items[0];
-        setUrlResult(parsedOne);
-        setUrlPreview({
-          title: parsedOne.title || "",
-          sourceType: parsedOne.sourceType,
-          relevance: parsedOne.relevance || "—",
-          footnoteSummary: parsedOne.footnoteSummary || "—",
-          raw: parsedOne,
-        });
-      } else {
-        setMultiUrlPreview({ items });
-      }
-      showNotif(`✅ تم استخراج ${items.length} مصدر — راجع المعاينة قبل الحفظ`);
-    } catch (e) {
-      console.error("[url-import]", e);
-      showNotif("⚠️ تعذّر استخراج البيانات تلقائياً — يمكنك الإدخال يدوياً", "warn");
+    } catch {
+      showNotif("حدث خطأ في الاتصال", "error");
     }
     setUrlLoading(false);
-  };
-
-  // حفظ جميع المصادر من معاينة الاستيراج المتعدد إلى docs مباشرة
-  const saveAllMultiUrl = () => {
-    if (!multiUrlPreview) return;
-    const toSave = multiUrlPreview.items.filter(it => it.keep && it.title);
-    if (toSave.length === 0) { showNotif("لا توجد مصادر محددة للحفظ", "warn"); return; }
-    const baseId = Date.now();
-    const newDocs = toSave.map((it, i) => ({
-      id: baseId + i,
-      title: it.title,
-      author: it.author || "",
-      year: it.year || null,
-      publisher: it.publisher || "",
-      place: it.place || "",
-      edition: it.edition || "",
-      journal: it.journal || "",
-      volume: it.volume || "",
-      issue: it.issue || "",
-      pages: it.pages || "",
-      university: it.university || "",
-      archiveRef: it.archiveRef || "",
-      url: it.url || "",
-      sourceType: it.sourceType || "وثيقة أرشيفية",
-      category:   it.sourceType || "وثيقة أرشيفية",
-      chapterId: it.chapterId ? parseInt(it.chapterId) : null,
-      section: "",
-      sectionId: "",
-      priority: "★★",
-      notes: it.footnoteSummary || it.relevance || "",
-      keywords: "",
-      isNew: true,
-      status: "لم يُراجع",
-    }));
-    setDocs(prev => [...newDocs, ...prev]);
-    setMultiUrlPreview(null);
-    showNotif(`✅ تم حفظ ${newDocs.length} مصدر في قاعدة الوثائق`);
-    setPage("search");
-  };
-
-  // تأكيد الحفظ من نافذة معاينة الرابط — يملأ النموذج ويفتح صفحة الإضافة
-  const confirmUrlPreview = () => {
-    if (!urlPreview) return;
-    const parsed = urlPreview.raw || {};
-    const detectedType = urlPreview.sourceType || parsed.sourceType || "وثيقة أرشيفية";
-    setAddForm(prev => ({
-      ...prev,
-      ...parsed,
-      title: parsed.title || urlPreview.title || "",
-      author: parsed.author || "",
-      year: parsed.year || "",
-      archiveRef: parsed.archiveRef || "",
-      category: detectedType,
-      sourceType: detectedType,
-      notes: urlPreview.footnoteSummary || parsed.notes || "",
-      keywords: parsed.keywords || "",
-    }));
-    setUrlPreview(null);
-    setPage("add");
-    showNotif("✅ تم نقل البيانات إلى نموذج الإضافة");
-  };
-
-  // ===== استخراج تلقائي لبيانات الكتاب من العنوان/المؤلف =====
-  const extractBookMetadata = async () => {
-    const title = (addForm.title||"").trim();
-    if (!title) { showNotif("أدخل عنوان الكتاب أولاً", "warn"); return; }
-    setBookExtractLoading(true);
-    try {
-      const data = await callLLM({
-        max_tokens: 600,
-        messages: [{
-          role: "user",
-          content: `استخرج بيانات الكتاب التالية بناءً على معرفتك الببليوغرافية الموثوقة فقط، ولا تختلق:
-العنوان: "${title}"
-${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
-
-أعد JSON خالصاً فقط (بدون \`\`\`):
-{
-  "author": "اسم العائلة، الاسم الأول",
-  "publisher": "دار النشر",
-  "place": "مكان النشر",
-  "year": "السنة",
-  "edition": "الطبعة (الأولى/الثانية/…)",
-  "verified": true_or_false
-}
-إن لم تتوفر معلومة موثوقة لحقل، اتركه فارغاً ("").`
-        }]
-      });
-      const text = data.content?.map(c=>c.text||"").join("") || "{}";
-      const clean = text.replace(/```json|```/g,"").trim();
-      const m = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(m ? m[0] : clean);
-      setAddForm(prev => ({
-        ...prev,
-        author: parsed.author || prev.author,
-        publisher: parsed.publisher || prev.publisher,
-        place: parsed.place || prev.place,
-        year: parsed.year || prev.year,
-        edition: parsed.edition || prev.edition,
-      }));
-      showNotif(parsed.verified === false ? "⚠️ بيانات تقريبية — راجعها قبل الحفظ" : "✅ تم استخراج بيانات الكتاب");
-    } catch (e) {
-      console.error("[book-extract]", e);
-      showNotif("تعذّر الاستخراج التلقائي", "error");
-    }
-    setBookExtractLoading(false);
-  };
-
-
-  // ===== المعرّف الأكاديمي للكيانات (شخص/مكان/جهة) =====
-  const handleEntityLookup = async () => {
-    const q = entityQuery.trim();
-    if (!q) return;
-    setEntityLoading(true);
-    setEntityResult(null);
-    try {
-      const data = await callLLM({
-        max_tokens: 1400,
-        messages: [{
-          role: "user",
-          content: `أنت مساعد بحثي صارم لأطروحة دكتوراه: "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
-الباحث يطلب تعريفاً أكاديمياً موثوقاً للكيان: "${q}".
-
-متطلبات التعريف:
-- اكتب تعريفاً مكثفاً في **ثمانية أسطر بالعربية الفصحى** بدقة أكاديمية عالية.
-- اربط الكيان بسياقه التاريخي وبمنطقة الخليج العربي خلال 1939-1945 إن أمكن.
-- لا تستخدم حشواً أو عبارات إنشائية؛ كل سطر يحمل معلومة جوهرية موثّقة.
-
-سياسة الاستشهاد (صارمة جداً — لمنع الهلوسة):
-- يُمنع منعاً باتاً اختراع أي مصدر أو مؤلف أو رابط.
-- يُمنع الاستشهاد بمقالات ويب عامة، مدوّنات، ويكيبيديا، مواقع إخبارية، أو روابط مولّدة.
-- المصادر المقبولة **فقط**: كتب أكاديمية محكّمة، مجلات علمية محكّمة (Journals)، أو رسائل/أطاريح جامعية (Theses/Dissertations) — معروفة بمؤلفها ودار نشرها/جامعتها وسنتها.
-- إن لم تكن متيقّناً 100% من وجود مصدر أكاديمي محكّم قابل للتحقق، اضبط "verifiable": false واترك حقول المصدر فارغة تماماً ("") ولا تضع أي رابط.
-- لا تضع حقل url إلا إذا كان رابطاً أكاديمياً حقيقياً معروفاً (JSTOR، Oxford Academic، Cambridge Core، Brill، dar.aucegypt، QDL، The National Archives UK). خلاف ذلك اتركه "".
-
-أعد JSON خالصاً فقط بدون code fences:
-{
-  "name": "${q}",
-  "definition": "تعريف من ثمانية أسطر بالعربية الفصحى، دقيق أكاديمياً، يربط الكيان بسياق الخليج العربي 1939-1945 إن أمكن",
-  "verifiable": true_or_false,
-  "sourceType": "book" | "journal" | "thesis" | "",
-  "source": {
-    "title": "",
-    "author": "",
-    "publisher": "",
-    "year": "",
-    "url": ""
-  }
-}`
-        }]
-      });
-      const text = data.content?.map(c=>c.text||"").join("") || "{}";
-      const clean = text.replace(/```json|```/g,"").trim();
-      const m = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(m ? m[0] : clean);
-      // فلترة صارمة: نقبل فقط book/journal/thesis مع مؤلف وعنوان، وإلا نُسقط المصدر كلياً
-      const st = (parsed?.sourceType || "").toLowerCase();
-      const hasCore = parsed?.source?.title && parsed?.source?.author;
-      const academicType = ["book","journal","thesis"].includes(st);
-      if (parsed.verifiable === false || !academicType || !hasCore) {
-        parsed.verifiable = false;
-        parsed.source = null;
-        parsed.sourceType = "";
-      }
-      setEntityResult(parsed);
-    } catch (e) {
-      showNotif("⚠️ تعذّر استخراج التعريف — حاول مرة أخرى", "error");
-    }
-    setEntityLoading(false);
   };
 
   // محرك البحث في التليغرام (محاكاة ذكية بـ Claude)
@@ -1484,39 +769,17 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
     setTgLoading(false);
   };
 
-  const handleAddDoc = async () => {
+  const handleAddDoc = () => {
     if (!addForm.title) { showNotif("يجب إدخال عنوان الوثيقة","error"); return; }
-    // AI classification into the live thesis structure (chapter + section + sub-section)
-    let cls = null;
-    try {
-      showNotif("🤖 جاري تصنيف المصدر داخل هيكل الأطروحة...");
-      cls = await classifyToStructure({
-        title: addForm.title,
-        author: addForm.author,
-        sourceType: addForm.sourceType || addForm.category,
-        summary: addForm.notes,
-        extraContext: [addForm.keywords, addForm.archiveRef].filter(Boolean).join(" | "),
-      });
-    } catch (e) { console.error("[add-classify]", e); }
-
-    const finalChapterId = cls?.chapterId || (addForm.chapterId ? parseInt(addForm.chapterId) : null);
     const newDoc = {
       ...addForm,
       id: docs.length + 100 + Math.floor(Math.random()*100),
-      chapterId: finalChapterId,
-      sectionId: cls?.subSectionId || cls?.sectionId || addForm.sectionId || "",
-      subSectionId: cls?.subSectionId || null,
-      section: addForm.section || cls?.subSectionName || cls?.sectionName || "",
-      classificationReason: cls?.classificationReason || "",
-      classificationConfidence: cls?.classificationConfidence || "",
+      chapterId: addForm.chapterId ? parseInt(addForm.chapterId) : null,
       year: addForm.year || null,
-      sourceType: addForm.sourceType || addForm.category || "وثيقة أرشيفية",
-      category:   addForm.category   || addForm.sourceType || "وثيقة أرشيفية",
     };
-
     setDocs(prev => [newDoc, ...prev]);
     setAddForm({ title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع" });
-    showNotif(`✅ تمت الإضافة — ${cls?.sectionName ? "صُنِّف في: " + (cls.subSectionName || cls.sectionName) : "الإجمالي: " + (docs.length + 1)}`);
+    showNotif(`✅ تمت إضافة الوثيقة — الإجمالي: ${docs.length + 1}`);
     setPage("search");
   };
 
@@ -1554,13 +817,13 @@ ${addForm.author ? `المؤلف المعروف: ${addForm.author}` : ""}
     if (!q) return;
     setAiLoading(true);
     setAiResult("");
-    const docsCtx = combinedDocs.slice(0,30).map(d=>`[${d.id}] ${d.title} | ${d.archiveRef||""} | ف${d.chapterId}`).join("\n");
+    const docsCtx = docs.slice(0,30).map(d=>`[${d.id}] ${d.title} | ${d.archiveRef||""} | ف${d.chapterId}`).join("\n");
     try {
       const data = await callLLM({
           max_tokens:1200,
           messages:[{ role:"user", content:`أنت مساعد بحثي لأطروحة "الخليج العربي خلال الحرب العالمية الثانية 1939-1945".
 سؤال الباحث: "${q}"
-الوثائق المتاحة (${combinedDocs.length} وثيقة):
+الوثائق المتاحة (${docs.length} وثيقة):
 ${docsCtx}
 أجب بتحليل أكاديمي، اذكر أرقام الوثائق الأكثر صلة، واقترح خطوات بحثية. أجب بالعربية.` }]
         });
@@ -1628,7 +891,7 @@ ${docsCtx}
 
   const handleExport = () => {
     if (!exportSelected.length) { showNotif("اختر وثيقة واحدة على الأقل","error"); return; }
-    const sel = combinedDocs.filter(d=>exportSelected.includes(d.id));
+    const sel = docs.filter(d=>exportSelected.includes(d.id));
     let text;
     if (exportFormat.startsWith("custom_")) {
       const idx = parseInt(exportFormat.replace("custom_",""));
@@ -1792,150 +1055,21 @@ ${docsContext || "لم يُعثر على مصادر مطابقة"}
     try { localStorage.setItem("acadarchiv_translations", JSON.stringify(updated)); } catch {}
   };
 
-  // Phase 3c: debounced cloud sync for bibliography / cards / translations / custom_formats
-  React.useEffect(() => { if (bibHydratedRef.current)   syncBibDebounced(bibliography);     }, [bibliography, syncBibDebounced]);
-  React.useEffect(() => { if (cardsHydratedRef.current) syncCardsDebounced(cards);          }, [cards, syncCardsDebounced]);
-  React.useEffect(() => { if (trHydratedRef.current)    syncTrDebounced(savedTranslations); }, [savedTranslations, syncTrDebounced]);
-  React.useEffect(() => { if (fmtHydratedRef.current)   syncFmtDebounced(customFormats);    }, [customFormats, syncFmtDebounced]);
-
-
-  const runImageOcrTranslation = async (imageDataUrls) => {
-    setTranslatorLoading(true);
-    setTranslatedResult("");
-    setKeyPoints([]);
-    setTranslatorDocMeta(null);
-    const prompt = `أنت أرشيفي متخصص في وثائق مكتب الهند البريطاني (IOR) المتعلقة بالخليج العربي خلال الحرب العالمية الثانية 1939-1945.
-هذه صور لوثيقة أرشيفية ممسوحة ضوئياً.
-المطلوب:
-1. قراءة كل النص الظاهر في الصور (OCR كامل بلغة الأصل)
-2. ترجمة النص الكامل إلى عربية أكاديمية رصينة
-3. استخراج 5 نقاط جوهرية مهمة لأطروحة دكتوراه عن الخليج العربي في الحرب العالمية الثانية
-4. اقتراح الفصل الأنسب:
-   - الفصل 1: أوضاع الخليج قبل الحرب
-   - الفصل 2: الأهمية الاستراتيجية والعسكرية
-   - الفصل 3: التحولات السياسية
-   - الفصل 4: التحولات الاقتصادية
-
-أجب بـ JSON فقط:
-{
-  "ocrText": "النص الكامل المستخرج بلغته الأصلية",
-  "docMeta": {"estimatedTitle":"","author":"","date":"","docType":"","language":"إنجليزية","suggestedChapter":""},
-  "translation": "الترجمة العربية الكاملة",
-  "keyPoints": [
-    {"rank":1,"point":"","chapter":"","importance":"★★★"},
-    {"rank":2,"point":"","chapter":"","importance":"★★★"},
-    {"rank":3,"point":"","chapter":"","importance":"★★"},
-    {"rank":4,"point":"","chapter":"","importance":"★★"},
-    {"rank":5,"point":"","chapter":"","importance":"★"}
-  ]
-}`;
-    try {
-      const content = [{ type: "text", text: prompt }];
-      for (const url of imageDataUrls) {
-        content.push({ type: "image_url", image_url: { url } });
-      }
-      const data = await callLLM({
-        forceProvider: "lovable",
-        max_tokens: 3000,
-        messages: [{ role: "user", content }],
-      });
-      const raw = data.content?.map(c => c.text || "").join("") || "{}";
-      const clean = raw.replace(/```json|```/g, "").trim();
-      const jsonMatch = clean.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : clean);
-      if (parsed.ocrText) setTranslatorText(parsed.ocrText);
-      setTranslatedResult(parsed.translation || "لم يتم الحصول على الترجمة");
-      setKeyPoints(parsed.keyPoints || []);
-      setTranslatorDocMeta(parsed.docMeta || null);
-      showNotif("✅ تم استخراج النص والترجمة");
-    } catch {
-      showNotif("فشل تحليل الصورة — حاول مرة أخرى", "error");
-    }
-    setTranslatorLoading(false);
-  };
-
-  const fileToDataUrl = (file) => new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => resolve(e.target.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-
-  const extractPdfPages = async (file) => {
-    const pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
-    const workerUrl = (await import("pdfjs-dist/build/pdf.worker.mjs?url")).default;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map(it => it.str).join(" ") + "\n";
-    }
-    const images = [];
-    const maxPages = Math.min(pdf.numPages, 5);
-    for (let i = 1; i <= maxPages; i++) {
-      const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 1.5 });
-      const canvas = document.createElement("canvas");
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext("2d");
-      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.85));
-    }
-    return { text: text.trim(), images };
-  };
-
-  const handleTranslatorFileUpload = async (file) => {
+  const handleTranslatorFileUpload = (file) => {
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    const allowed = ["txt", "md", "pdf", "jpg", "jpeg", "png", "webp"];
-    if (!allowed.includes(ext)) {
-      showNotif("ارفع TXT أو MD أو PDF أو صورة (JPG/PNG/WEBP)", "warn");
+    if (!["txt", "md"].includes(ext)) {
+      showNotif("ارفع ملف TXT أو MD فقط — PDF يُلصق نصه يدوياً أدناه", "warn");
       return;
     }
-    setTranslatorFileName(file.name);
-    setTranslatorFile(file);
-
-    if (["txt", "md"].includes(ext)) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        setTranslatorText(e.target.result);
-        showNotif(`✅ تم تحميل: ${file.name}`);
-      };
-      reader.readAsText(file, "utf-8");
-      return;
-    }
-
-    if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
-      showNotif("⏳ جاري قراءة الصورة وترجمتها...");
-      try {
-        const dataUrl = await fileToDataUrl(file);
-        await runImageOcrTranslation([dataUrl]);
-      } catch {
-        showNotif("فشل قراءة الصورة", "error");
-      }
-      return;
-    }
-
-    if (ext === "pdf") {
-      showNotif("⏳ جاري معالجة PDF...");
-      try {
-        const { text, images } = await extractPdfPages(file);
-        if (text && text.length >= 100) {
-          setTranslatorText(text);
-          showNotif("✅ تم استخراج نص PDF — اضغط زر الترجمة");
-        } else {
-          showNotif("PDF ممسوح ضوئياً — جاري OCR عبر الذكاء الاصطناعي...");
-          await runImageOcrTranslation(images);
-        }
-      } catch {
-        showNotif("فشل قراءة ملف PDF", "error");
-      }
-      return;
-    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      setTranslatorText(e.target.result);
+      setTranslatorFileName(file.name);
+      setTranslatorFile(file);
+      showNotif(`✅ تم تحميل: ${file.name}`);
+    };
+    reader.readAsText(file, "utf-8");
   };
 
   const runTranslation = async () => {
@@ -2023,9 +1157,9 @@ ${textToTranslate.substring(0, 4000)}
 
   // حساب نسبة إنجاز كل فصل: يحسب عدد الوثائق + الهوامش المنجزة
   const calcChapterProgress = (chapterId) => {
-    const chDocs   = combinedDocs.filter(d => d.chapterId === chapterId);
+    const chDocs   = docs.filter(d => d.chapterId === chapterId);
     const chBibs   = bibliography.filter(b => {
-      const doc = combinedDocs.find(d => d.id === b.docId);
+      const doc = docs.find(d => d.id === b.docId);
       return doc?.chapterId === chapterId;
     });
     // نسبة وجود وثائق: نحتاج 10 وثائق كحد مثالي لكل فصل
@@ -2046,18 +1180,15 @@ ${textToTranslate.substring(0, 4000)}
 
   // تصنيف فئات المصادر للتنوع العلمي
   const DIVERSITY_CATEGORIES = [
-    { key: "archival",  label: "الوثائق والمصادر الأولية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية","تقرير رسمي","تقرير"] },
-    { key: "books",     label: "الكتب",                     color: "#3B82F6", cats: ["كتاب","كتاب عربي","كتاب أجنبي"] },
-    { key: "theses",    label: "الرسائل والأطاريح",         color: "#10B981", cats: ["رسالة علمية","رسالة ماجستير","أطروحة دكتوراه"] },
-    { key: "journals",  label: "البحوث والمجلات",            color: "#F59E0B", cats: ["مقالة","بحث","بحث علمي","مجلة علمية"] },
-    { key: "confs",     label: "المؤتمرات",                  color: "#06B6D4", cats: ["مؤتمر علمي","مؤتمر"] },
-    { key: "news",      label: "الصحف",                      color: "#EF4444", cats: ["صحيفة"] },
-    { key: "web",       label: "المواقع والموسوعات",         color: "#0EA5E9", cats: ["موقع إلكتروني","موسوعة"] },
+    { key: "archival",  label: "الوثائق الأرشيفية", color: "#8B5CF6", cats: ["مصدر أولي","وثيقة أرشيفية"] },
+    { key: "books",     label: "الكتب",              color: "#3B82F6", cats: ["كتاب"] },
+    { key: "theses",    label: "الرسائل والأطاريح",  color: "#10B981", cats: ["رسالة علمية","أطروحة دكتوراه"] },
+    { key: "journals",  label: "المجلات والصحف",     color: "#F59E0B", cats: ["مقالة","صحيفة","بحث"] },
+    { key: "reports",   label: "التقارير والمواقع",   color: "#EF4444", cats: ["تقرير","موقع إلكتروني"] },
   ];
 
-
   const calcDiversityForChapter = (chapterId) => {
-    const chDocs = combinedDocs.filter(d => d.chapterId === chapterId);
+    const chDocs = docs.filter(d => d.chapterId === chapterId);
     const total  = chDocs.length || 1;
     return DIVERSITY_CATEGORIES.map(dc => {
       const count = chDocs.filter(d => dc.cats.includes(d.category || "مصدر أولي")).length;
@@ -2066,7 +1197,7 @@ ${textToTranslate.substring(0, 4000)}
   };
 
   const calcDiversityForSection = (sectionId) => {
-    const secDocs = combinedDocs.filter(d => d.sectionId === sectionId || d.sectionId?.startsWith(sectionId));
+    const secDocs = docs.filter(d => d.sectionId === sectionId || d.sectionId?.startsWith(sectionId));
     const total   = secDocs.length || 1;
     return DIVERSITY_CATEGORIES.map(dc => {
       const count = secDocs.filter(d => dc.cats.includes(d.category || "مصدر أولي")).length;
@@ -2138,7 +1269,7 @@ ${textToTranslate.substring(0, 4000)}
     setDefenseMessages([]);
     setDefenseLoading(true);
 
-    const chDocs     = combinedDocs.filter(d => d.chapterId === ch.id);
+    const chDocs     = docs.filter(d => d.chapterId === ch.id);
     const diversity  = calcDiversityForChapter(ch.id);
     const diversityText = diversity.map(d => `${d.label}: ${d.count} مصدر (${d.pct}%)`).join("، ");
     const docsContext = chDocs.slice(0, 15).map(d => `• "${d.title}" [${d.archiveRef||"—"}]`).join("\n");
@@ -2179,7 +1310,7 @@ ${docsContext}
     setDefenseInput("");
     setDefenseLoading(true);
 
-    const chDocs     = combinedDocs.filter(d => d.chapterId === defenseChapter?.id);
+    const chDocs     = docs.filter(d => d.chapterId === defenseChapter?.id);
     const diversity  = calcDiversityForChapter(defenseChapter?.id);
     const diversityText = diversity.map(d => `${d.label}: ${d.count} مصدر (${d.pct}%)`).join("، ");
 
@@ -2350,290 +1481,86 @@ ${docsContext}
     {id:"bibliography",  label:`المراجع النهائية (${bibliography.length})`,       icon:"📋"},
     {id:"defense",       label:"محاكي المناقشة",                                  icon:"🎓"},
     {id:"ai",            label:"مساعد ذكي",                                       icon:"🤖"},
-    {id:"supervisor",    label:"غرفة المشرف",                                     icon:"👨‍🏫"},
+    {id:"telegram",      label:"تيليغرام",                                        icon:"✈️"},
   ];
 
   return (
     <div style={{fontFamily:"'Segoe UI',Tahoma,Geneva,Verdana,sans-serif",direction:"rtl",minHeight:"100vh",background:"#f1f5f9",color:"#1e293b"}}>
       {notif && <div style={{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:notif.type==="error"?"#fee2e2":notif.type==="warn"?"#fef9c3":"#dcfce7",color:notif.type==="error"?"#dc2626":notif.type==="warn"?"#92400e":"#16a34a",padding:"10px 24px",borderRadius:12,fontWeight:500,fontSize:13,border:`1px solid ${notif.type==="error"?"#fca5a5":notif.type==="warn"?"#fde68a":"#86efac"}`,boxShadow:"0 4px 20px rgba(0,0,0,0.12)"}}>{notif.msg}</div>}
 
-      {confirmDialog && (
-        <div onClick={()=>setConfirmDialog(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:14,padding:24,maxWidth:420,width:"100%",direction:"rtl",fontFamily:"inherit",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
-            <div style={{fontWeight:700,fontSize:17,color:"#1e293b",marginBottom:10}}>{confirmDialog.title}</div>
-            <div style={{fontSize:13,color:"#475569",lineHeight:1.8,marginBottom:20,whiteSpace:"pre-line"}}>{confirmDialog.message}</div>
-            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-              <button onClick={()=>setConfirmDialog(null)} style={{padding:"9px 18px",borderRadius:8,background:"#e2e8f0",color:"#334155",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>إلغاء</button>
-              <button onClick={()=>{const fn=confirmDialog.onConfirm;setConfirmDialog(null);if(fn)fn();}} style={{padding:"9px 18px",borderRadius:8,background:"#dc2626",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>نعم، احذف</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
       {/* ===== MODAL: توليد الهامش الفوري ===== */}
       {footnoteModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:620,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"90vh",overflowY:"auto"}}>
+          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:560,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
             {/* رأس النافذة */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 توليد هامش المتن</div>
               <button onClick={()=>setFootnoteModal(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
             </div>
-            {/* معلومات المصدر (للقراءة فقط) */}
-            <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginBottom:14,border:"0.5px solid #e2e8f0",fontSize:12,lineHeight:1.9}}>
-              <div><strong>العنوان:</strong> {footnoteModal.title || "—"}</div>
-              <div><strong>المؤلف:</strong> {footnoteModal.author || "—"}</div>
-              <div><strong>النوع:</strong> {footnoteModal.category || footnoteModal.sourceType || "وثيقة أرشيفية"}</div>
+            {/* معلومات المصدر */}
+            <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginBottom:14,border:"0.5px solid #e2e8f0"}}>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:3}}>المصدر المختار:</div>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>{footnoteModal.title}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
+                {footnoteModal.author && <span>👤 {footnoteModal.author}</span>}
+                {footnoteModal.year   && <span>📅 {footnoteModal.year}</span>}
+                <span style={{background:"#eff6ff",color:"#3B82F6",borderRadius:4,padding:"1px 6px"}}>{footnoteModal.category || footnoteModal.sourceType || "مصدر أولي"}</span>
+              </div>
             </div>
             {/* حقل رقم الصفحة */}
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>رقم الصفحة *</label>
+            <div style={{marginBottom:14}}>
+              <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>رقم الصفحة المراد توثيقها *</label>
               <input
                 ref={footnotePageRef}
                 type="text"
-                required
                 value={footnotePageNum}
                 onChange={e=>{ setFootnotePageNum(e.target.value); setFootnoteResult(""); }}
                 onKeyDown={e=>{ if(e.key==="Enter") handleGenerateFootnote(); }}
-                aria-label="Page Number"
                 placeholder="مثال: 45 أو 45-47"
-                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:`1.5px solid ${footnotePageNum.trim()?"#86efac":"#fca5a5"}`,fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+                style={{width:"100%",padding:"10px 14px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
               />
-              {!footnotePageNum.trim() && (
-                <div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠️ يجب إدخال رقم الصفحة قبل توليد الهامش</div>
-              )}
             </div>
-            {/* زر توليد الهامش */}
-            <button
-              onClick={handleGenerateFootnote}
-              disabled={!footnotePageNum.trim()}
-              style={{width:"100%",padding:"10px",borderRadius:8,background:footnotePageNum.trim()?"#3B82F6":"#cbd5e1",color:"white",border:"none",cursor:footnotePageNum.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
+            <button onClick={handleGenerateFootnote} style={{width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13,marginBottom:14}}>
               توليد الهامش
             </button>
-            {/* الهامش المُولَّد (قابل للتعديل) */}
+            {/* نتيجة الهامش */}
             {footnoteResult && (
-              <div style={{marginBottom:12}}>
-                <label style={{fontSize:12,color:"#475569",display:"block",marginBottom:6,fontWeight:500}}>الهامش المُولَّد (يمكن التعديل)</label>
-                <textarea
-                  value={footnoteResult}
-                  onChange={e=>setFootnoteResult(e.target.value)}
-                  rows={5}
-                  style={{width:"100%",padding:10,borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl",lineHeight:1.8,resize:"vertical"}}
-                />
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:"#64748b",marginBottom:6,fontWeight:500}}>الهامش المُولَّد:</div>
+                <div style={{background:"#f0fdf4",borderRadius:8,padding:12,border:"1px solid #86efac",fontSize:13,lineHeight:1.9,color:"#1e293b",direction:"rtl"}}>
+                  {footnoteResult}
+                </div>
               </div>
             )}
             {/* أزرار النسخ والإغلاق */}
             <div style={{display:"flex",gap:8}}>
-              <button
-                onClick={copyFootnoteAndRegister}
-                disabled={!footnoteResult.trim()}
-                style={{flex:1,padding:"10px",borderRadius:8,background:footnoteResult.trim()?"#10B981":"#cbd5e1",color:"white",border:"none",cursor:footnoteResult.trim()?"pointer":"not-allowed",fontWeight:700,fontFamily:"inherit",fontSize:13}}>
-                📋 نسخ الهامش
-              </button>
-              <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
+              {footnoteResult && (
+                <button onClick={copyFootnoteAndRegister} style={{flex:1,padding:"9px",borderRadius:8,background:"#10B981",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
+                  📋 نسخ الهامش + إضافة للمراجع النهائية
+                </button>
+              )}
+              <button onClick={()=>setFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إغلاق</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* ===== MODAL: معاينة استخراج الرابط الذكي ===== */}
-      {urlPreview && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:620,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>🔗 معاينة المصدر المستخرَج</div>
-              <button onClick={()=>setUrlPreview(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
-            </div>
-            <div style={{display:"grid",gap:10,fontSize:13,marginBottom:14}}>
-              <div><strong>العنوان:</strong> <input value={urlPreview.title} onChange={e=>setUrlPreview(p=>({...p,title:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}/></div>
-              <div><strong>نوع المصدر:</strong>
-                <select value={urlPreview.sourceType} onChange={e=>setUrlPreview(p=>({...p,sourceType:e.target.value}))} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4}}>
-                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div><strong>الصلة بالأطروحة:</strong>
-                <textarea value={urlPreview.relevance} onChange={e=>setUrlPreview(p=>({...p,relevance:e.target.value}))} rows={2} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
-              </div>
-              <div><strong>ملخص الحاشية المقترح:</strong>
-                <textarea value={urlPreview.footnoteSummary} onChange={e=>setUrlPreview(p=>({...p,footnoteSummary:e.target.value}))} rows={3} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",marginTop:4,resize:"vertical"}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-              <button onClick={()=>setUrlPreview(null)} style={{padding:"8px 16px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إلغاء</button>
-              <button onClick={confirmUrlPreview} style={{padding:"8px 16px",borderRadius:8,background:"#10b981",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>✅ تأكيد ومتابعة الإضافة</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===== MODAL: معاينة استخراج مصادر متعددة من رابط ===== */}
-      {multiUrlPreview && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"white",borderRadius:16,padding:20,maxWidth:1000,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"92vh",display:"flex",flexDirection:"column"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📦 تم استخراج {multiUrlPreview.items.length} مصدر — راجع وحرّر قبل الحفظ</div>
-              <button onClick={()=>setMultiUrlPreview(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
-            </div>
-            <div style={{fontSize:11,color:"#64748b",marginBottom:10}}>أزل علامة "الإبقاء" لتجاهل أي مصدر — يمكنك تعديل كل الحقول.</div>
-            <div style={{overflowY:"auto",flex:1,display:"flex",flexDirection:"column",gap:10,paddingLeft:4}}>
-              {multiUrlPreview.items.map((it, i) => {
-                const upd = (k,v) => setMultiUrlPreview(p => ({ ...p, items: p.items.map((x,j)=> j===i ? {...x,[k]:v} : x) }));
-                return (
-                  <div key={i} style={{border:"0.5px solid #e2e8f0",borderRadius:10,padding:12,background:it.keep?"#fff":"#f8fafc",opacity:it.keep?1:0.55}}>
-                    <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
-                      <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#475569",cursor:"pointer"}}>
-                        <input type="checkbox" checked={it.keep} onChange={e=>upd("keep",e.target.checked)}/>
-                        الإبقاء
-                      </label>
-                      <span style={{fontSize:11,background:"#e0e7ff",color:"#3730a3",padding:"2px 8px",borderRadius:5,fontWeight:600}}>#{i+1}</span>
-                      <select value={it.sourceType||""} onChange={e=>upd("sourceType",e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                        {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <select value={it.chapterId||""} onChange={e=>upd("chapterId",e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit",flex:1}}>
-                        <option value="">— اختر الفصل المقترح —</option>
-                        {chapters.map(ch=><option key={ch.id} value={ch.id}>{ch.titleAr.split(":")[0]}</option>)}
-                      </select>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8}}>
-                      <input value={it.title||""} onChange={e=>upd("title",e.target.value)} placeholder="العنوان" style={{gridColumn:"1/-1",padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.author||""} onChange={e=>upd("author",e.target.value)} placeholder="المؤلف (اسم العائلة، الاسم الأول)" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.publisher||""} onChange={e=>upd("publisher",e.target.value)} placeholder="الناشر" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.place||""} onChange={e=>upd("place",e.target.value)} placeholder="مكان النشر" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.year||""} onChange={e=>upd("year",e.target.value)} placeholder="السنة" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.edition||""} onChange={e=>upd("edition",e.target.value)} placeholder="الطبعة" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}/>
-                      <input value={it.url||""} onChange={e=>upd("url",e.target.value)} placeholder="الرابط" style={{padding:"6px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit",direction:"ltr"}}/>
-                    </div>
-                    {it.relevance && <div style={{fontSize:11,color:"#64748b",marginTop:6}}><strong>الصلة:</strong> {it.relevance}</div>}
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e2e8f0"}}>
-              <button onClick={()=>setMultiUrlPreview(null)} style={{padding:"8px 16px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#64748b",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>إلغاء</button>
-              <button onClick={saveAllMultiUrl} style={{padding:"8px 18px",borderRadius:8,background:"#10b981",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:13}}>
-                ✅ حفظ {multiUrlPreview.items.filter(x=>x.keep).length} مصدر
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-
-      {/* ===== MODAL: توليد هوامش متعددة ===== */}
-      {bulkFootnoteModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"white",borderRadius:16,padding:24,maxWidth:760,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.2)",direction:"rtl",maxHeight:"90vh",overflowY:"auto"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b"}}>📝 توليد هوامش متعددة ({bulkFootnoteModal.items.length})</div>
-              <button onClick={()=>setBulkFootnoteModal(null)} style={{background:"#f1f5f9",border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
-            </div>
-
-            {!bulkFootnoteModal.generated ? (
-              <>
-                <div style={{fontSize:12,color:"#475569",marginBottom:10}}>أدخل رقم الصفحة لكل مصدر، ثم اضغط "توليد الهوامش".</div>
-                <div style={{maxHeight:"50vh",overflowY:"auto",border:"0.5px solid #e2e8f0",borderRadius:8,marginBottom:14}}>
-                  {bulkFootnoteModal.items.map((it, idx)=>(
-                    <div key={it.doc.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderBottom:"0.5px solid #f1f5f9",fontSize:12}}>
-                      <span style={{fontWeight:700,color:"#64748b",minWidth:22}}>{idx+1}.</span>
-                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={it.doc.title}>{it.doc.title}</span>
-                      <label style={{fontSize:11,color:"#475569"}}>ص</label>
-                      <input
-                        type="text"
-                        value={it.page}
-                        onChange={e=>{
-                          const v = e.target.value;
-                          setBulkFootnoteModal(m=>({...m, items: m.items.map((x,i)=>i===idx?{...x,page:v}:x)}));
-                        }}
-                        placeholder="رقم الصفحة"
-                        style={{width:120,padding:"6px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit"}}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                  <button onClick={()=>{
-                    const missing = bulkFootnoteModal.items.some(it=>!it.page.trim());
-                    if (missing) { showNotif("⚠️ أدخل رقم الصفحة لكل مصدر","error"); return; }
-                    const generated = bulkFootnoteModal.items.map(it=>({
-                      doc: it.doc,
-                      page: it.page.trim(),
-                      text: buildArabicCitation(it.doc, it.page.trim(), true)
-                    }));
-                    setBulkFootnoteModal(m=>({...m, generated}));
-                  }} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit",fontSize:13}}>توليد الهوامش</button>
-                  <button onClick={()=>setBulkFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{fontSize:12,color:"#475569",marginBottom:10}}>يمكنك تعديل أي هامش قبل النسخ والإضافة للمراجع النهائية.</div>
-                <div style={{maxHeight:"55vh",overflowY:"auto",marginBottom:14}}>
-                  {bulkFootnoteModal.generated.map((g, idx)=>(
-                    <div key={g.doc.id} style={{marginBottom:12}}>
-                      <label style={{fontSize:12,fontWeight:600,color:"#1e293b",display:"block",marginBottom:4}}>الهامش {idx+1}:</label>
-                      <textarea
-                        value={g.text}
-                        onChange={e=>{
-                          const v = e.target.value;
-                          setBulkFootnoteModal(m=>({...m, generated: m.generated.map((x,i)=>i===idx?{...x,text:v}:x)}));
-                        }}
-                        rows={3}
-                        style={{width:"100%",padding:10,borderRadius:8,border:"1px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl",lineHeight:1.8,resize:"vertical"}}
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                  <button onClick={async ()=>{
-                    const all = bulkFootnoteModal.generated.map((g,i)=>`${i+1}. ${g.text}`).join("\n\n");
-                    try { await navigator.clipboard.writeText(all); } catch {}
-                    bulkFootnoteModal.generated.forEach(g => addToBibliography(g.doc, g.text));
-                    showNotif(`✅ تم نسخ ${bulkFootnoteModal.generated.length} هوامش وإضافتها للمراجع النهائية`);
-                    setTimeout(()=>setBulkFootnoteModal(null), 2000);
-                  }} style={{padding:"10px 18px",borderRadius:8,background:"#10B981",color:"white",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit",fontSize:13}}>📋 نسخ جميع الهوامش</button>
-                  <button onClick={()=>setBulkFootnoteModal(null)} style={{padding:"9px 16px",borderRadius:8,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13,color:"#475569"}}>إغلاق</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-
-
 
       {/* Header */}
       <div style={{background:"linear-gradient(135deg,#1e3a5f 0%,#2d5a8e 100%)",color:"white",padding:"0 16px"}}>
-        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,minHeight:60,paddingTop:6,paddingBottom:6}}>
-          {/* Left column (visual top-left): Logout above AI model dropdown */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:5,order:2}}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              {userEmail && (
-                <span style={{fontSize:10,color:"#e2e8f0",opacity:0.9,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={userEmail}>👤 {userEmail}</span>
-              )}
-              <button onClick={handleLogout} title="تسجيل الخروج" style={{background:"rgba(239,68,68,0.85)",border:"1px solid rgba(255,255,255,0.25)",color:"white",padding:"5px 10px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>
-                🚪 خروج
-              </button>
-            </div>
-            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي / الأدوات" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",maxWidth:220}}>
+        <div style={{maxWidth:1200,margin:"0 auto",display:"flex",alignItems:"center",justifyContent:"space-between",height:60}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:24}}>🗂️</span>
+            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
+          </div>
+          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center"}}>
+            <select value={aiModel} onChange={e=>{ setAiModel(e.target.value); setSelectedModel(e.target.value); }} title="اختر نموذج الذكاء الاصطناعي" style={{border:"1px solid rgba(255,255,255,0.3)",borderRadius:6,padding:"4px 8px",fontSize:11,background:"rgba(255,255,255,0.15)",color:"white",cursor:"pointer",fontFamily:"inherit",marginLeft:6}}>
               {AI_MODELS.map(m => <option key={m.id} value={m.id} style={{color:"#1e293b"}}>🤖 {m.label}</option>)}
             </select>
-          </div>
-          {/* Center: nav icons */}
-          <div style={{display:"flex",gap:2,flexWrap:"wrap",alignItems:"center",order:1,flex:1,justifyContent:"center"}}>
             {navItems.map(n=>(
               <button key={n.id} onClick={()=>setPage(n.id)} style={{background:page===n.id?"rgba(255,255,255,0.2)":"transparent",border:"none",color:"white",padding:"5px 9px",borderRadius:6,cursor:"pointer",fontSize:12,fontFamily:"inherit",display:"flex",alignItems:"center",gap:3}}>
                 <span>{n.icon}</span><span style={{display:"none"}} className="nav-label">{n.label}</span>
               </button>
             ))}
-          </div>
-          {/* Right (visual): brand */}
-          <div style={{display:"flex",alignItems:"center",gap:10,order:0}}>
-            <span style={{fontSize:24}}>🗂️</span>
-            <div><div style={{fontWeight:700,fontSize:15}}>أرشيف الأطروحة</div><div style={{fontSize:10,opacity:0.75}}>الخليج العربي • الحرب العالمية الثانية 1939-1945 • د. اسعد النعيمي</div></div>
           </div>
         </div>
         {/* nav labels row */}
@@ -2661,31 +1588,8 @@ ${docsContext}
               </div>
             </div>
 
-            {/* شريط البحث في هيكل الأطروحة */}
-            <div style={{background:"white",borderRadius:10,padding:10,border:"0.5px solid #e2e8f0",marginBottom:14,display:"flex",gap:8,alignItems:"center",position:"sticky",top:0,zIndex:5}}>
-              <span style={{fontSize:16}}>🔍</span>
-              <input
-                value={structureSearch}
-                onChange={e=>setStructureSearch(e.target.value)}
-                placeholder="ابحث في الفصول والمباحث والفقرات..."
-                style={{flex:1,padding:"7px 10px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",outline:"none"}}
-              />
-              {structureSearch && (
-                <button onClick={()=>setStructureSearch("")} style={{padding:"6px 10px",borderRadius:7,background:"#f1f5f9",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>مسح</button>
-              )}
-            </div>
-
-            {(() => {
-              const q = structureSearch.trim().toLowerCase();
-              const visibleChapters = !q ? chapters : chapters.filter(ch => {
-                if ((ch.titleAr||"").toLowerCase().includes(q)) return true;
-                return (ch.sections||[]).some(s => (s.title||"").toLowerCase().includes(q) || (s.num||"").toLowerCase().includes(q));
-              });
-              if (visibleChapters.length === 0) {
-                return <div style={{background:"white",borderRadius:10,padding:20,border:"0.5px solid #e2e8f0",textAlign:"center",color:"#94a3b8",fontSize:13}}>لا توجد نتائج مطابقة لـ "{structureSearch}"</div>;
-              }
-              return visibleChapters.map(ch=>{
-              const chDocs = combinedDocs.filter(d=>d.chapterId===ch.id);
+            {chapters.map(ch=>{
+              const chDocs = docs.filter(d=>d.chapterId===ch.id);
               const mainSections = ch.sections.filter(s=>!s.id.includes("a")&&!s.id.includes("b")&&!s.id.includes("c"));
               const isEditingThisChapter = editingChapter?.id === ch.id;
               return (
@@ -2717,16 +1621,11 @@ ${docsContext}
                             <span>🆕 {chDocs.filter(d=>d.isNew).length} جديدة</span>
                           </div>
                         </div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <div style={{display:"flex",gap:6}}>
                           <button
                             onClick={()=>setEditingChapter({id:ch.id,value:ch.titleAr})}
                             style={{padding:"4px 10px",borderRadius:6,background:"white",border:`1px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
                             ✏️ تعديل
-                          </button>
-                          <button
-                            onClick={()=>openAddSection(ch.id)}
-                            style={{padding:"4px 10px",borderRadius:6,background:"white",border:`1px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>
-                            ＋ مبحث
                           </button>
                           <button
                             onClick={()=>{setSearchFilters(p=>({...p,chapterId:ch.id.toString(),query:""}));setPage("search");}}
@@ -2738,35 +1637,11 @@ ${docsContext}
                     )}
                   </div>
 
-                  {/* ===== نموذج إضافة مبحث جديد ===== */}
-                  {addingSecChId === ch.id && (
-                    <div style={{padding:"12px 18px",background:`${ch.color}05`,borderBottom:`0.5px solid ${ch.color}20`,display:"grid",gap:8}}>
-                      <div style={{fontSize:12,fontWeight:600,color:ch.color}}>إضافة مبحث جديد إلى: {ch.titleAr}</div>
-                      <input
-                        autoFocus
-                        value={newSecForm.title}
-                        onChange={e=>setNewSecForm(p=>({...p,title:e.target.value}))}
-                        placeholder="عنوان المبحث *"
-                        style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${ch.color}50`,fontSize:12,fontFamily:"inherit",outline:"none"}}
-                      />
-                      <input
-                        value={newSecForm.num}
-                        onChange={e=>setNewSecForm(p=>({...p,num:e.target.value}))}
-                        placeholder="رقم المبحث (تلقائي)"
-                        style={{padding:"7px 12px",borderRadius:7,border:`1px solid ${ch.color}50`,fontSize:12,fontFamily:"inherit",outline:"none",maxWidth:200}}
-                      />
-                      <div style={{display:"flex",gap:8}}>
-                        <button onClick={()=>submitAddSection(ch.id)} style={{padding:"6px 16px",borderRadius:7,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",fontWeight:600}}>إضافة</button>
-                        <button onClick={()=>{setAddingSecChId(null);setNewSecForm({title:"",num:""});}} style={{padding:"6px 14px",borderRadius:7,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>إلغاء</button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* ===== المباحث الرئيسية ===== */}
                   <div style={{padding:"12px 18px"}}>
                     {mainSections.map(sec=>{
-                      const secDocs = combinedDocs.filter(d=>d.sectionId===sec.id||d.sectionId?.startsWith(sec.id));
-                      const subSections = ch.sections.filter(s=>s.id.startsWith(sec.id)&&s.id!==sec.id&&/^[a-z]+$/i.test(s.id.slice(sec.id.length)));
+                      const secDocs = docs.filter(d=>d.sectionId===sec.id||d.sectionId?.startsWith(sec.id));
+                      const subSections = ch.sections.filter(s=>s.id.startsWith(sec.id)&&s.id!==sec.id);
                       const isEditingThisSec = editingSection?.chId===ch.id && editingSection?.secId===sec.id;
                       return (
                         <div key={sec.id} style={{marginBottom:16,paddingBottom:16,borderBottom:"0.5px solid #f1f5f9"}}>
@@ -2786,27 +1661,13 @@ ${docsContext}
                                 <button onClick={()=>setEditingSection(null)} style={{padding:"4px 8px",borderRadius:6,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>إلغاء</button>
                               </div>
                             ) : (
-                              <div style={{display:"flex",alignItems:"center",gap:6,flex:1,flexWrap:"wrap"}}>
-                                <div style={{fontWeight:600,fontSize:13,color:"#1e293b",flex:1,minWidth:140}}>{sec.title}</div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+                                <div style={{fontWeight:600,fontSize:13,color:"#1e293b",flex:1}}>{sec.title}</div>
                                 <button
                                   onClick={e=>{e.stopPropagation();setEditingSection({chId:ch.id,secId:sec.id,value:sec.title});}}
                                   style={{padding:"2px 8px",borderRadius:5,background:"transparent",border:`0.5px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
                                   ✏️
                                 </button>
-                                <button
-                                  onClick={e=>{e.stopPropagation();openAddSubSection(sec.id);}}
-                                  title="إضافة فقرة فرعية"
-                                  style={{padding:"2px 8px",borderRadius:5,background:"transparent",border:`0.5px solid ${ch.color}`,color:ch.color,cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
-                                  ＋ فقرة
-                                </button>
-                                {sec.userAdded && (
-                                  <button
-                                    onClick={e=>{e.stopPropagation();askDeleteSection(ch.id,sec.id);}}
-                                    title="حذف المبحث"
-                                    style={{padding:"2px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
-                                    🗑️
-                                  </button>
-                                )}
                               </div>
                             )}
                             <span style={{background:`${ch.color}15`,color:ch.color,borderRadius:5,padding:"1px 8px",fontSize:10,fontWeight:600,flexShrink:0}}>{secDocs.length} وثيقة</span>
@@ -2816,35 +1677,8 @@ ${docsContext}
                           {subSections.length>0 && (
                             <div style={{marginBottom:8,paddingRight:8,borderRight:`2px solid ${ch.color}30`}}>
                               {subSections.map(sub=>(
-                                <div key={sub.id} style={{fontSize:11,color:"#64748b",padding:"2px 0",display:"flex",alignItems:"center",gap:6}}>
-                                  <span style={{flex:1}}>{sub.title}</span>
-                                  {sub.userAdded && (
-                                    <button
-                                      onClick={()=>askDeleteSection(ch.id,sub.id)}
-                                      title="حذف الفقرة"
-                                      style={{padding:"1px 6px",borderRadius:4,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:9,fontFamily:"inherit"}}>
-                                      🗑️
-                                    </button>
-                                  )}
-                                </div>
+                                <div key={sub.id} style={{fontSize:11,color:"#64748b",padding:"2px 0"}}>{sub.title}</div>
                               ))}
-                            </div>
-                          )}
-
-                          {/* نموذج إضافة فقرة فرعية */}
-                          {addingSubSecId === sec.id && (
-                            <div style={{margin:"6px 0 10px",padding:"10px 12px",background:`${ch.color}06`,borderRadius:7,border:`0.5px solid ${ch.color}30`,display:"grid",gap:6}}>
-                              <input
-                                autoFocus
-                                value={newSubForm.title}
-                                onChange={e=>setNewSubForm({title:e.target.value})}
-                                placeholder="عنوان الفقرة الفرعية *"
-                                style={{padding:"6px 10px",borderRadius:6,border:`1px solid ${ch.color}40`,fontSize:11,fontFamily:"inherit",outline:"none"}}
-                              />
-                              <div style={{display:"flex",gap:6}}>
-                                <button onClick={()=>submitAddSubSection(ch.id,sec.id)} style={{padding:"5px 14px",borderRadius:6,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontSize:11,fontFamily:"inherit",fontWeight:600}}>إضافة</button>
-                                <button onClick={()=>{setAddingSubSecId(null);setNewSubForm({title:""});}} style={{padding:"5px 12px",borderRadius:6,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>إلغاء</button>
-                              </div>
                             </div>
                           )}
 
@@ -2873,12 +1707,6 @@ ${docsContext}
                                     style={{padding:"3px 8px",borderRadius:5,background:"#faf5ff",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
                                     📝
                                   </button>
-                                  <button
-                                    onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}}
-                                    title="حذف"
-                                    style={{padding:"3px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit",flexShrink:0}}>
-                                    🗑️
-                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -2890,36 +1718,10 @@ ${docsContext}
                         </div>
                       );
                     })}
-
-                    {/* ===== وثائق مضافة للفصل بدون مبحث محدد (Issue A safety net) ===== */}
-                    {(() => {
-                      const sectionIds = new Set(ch.sections.map(s => s.id));
-                      const unclassified = chDocs.filter(d => !d.sectionId || (!sectionIds.has(d.sectionId) && ![...sectionIds].some(sid => d.sectionId?.startsWith(sid))));
-                      if (unclassified.length === 0) return null;
-                      return (
-                        <div style={{marginTop:8,padding:"10px 12px",background:"#f0f9ff",borderRadius:8,border:"0.5px dashed #93c5fd"}}>
-                          <div style={{fontSize:12,fontWeight:600,color:"#1e40af",marginBottom:6}}>📥 وثائق مضافة لهذا الفصل (بدون مبحث محدد) — {unclassified.length}</div>
-                          <div style={{display:"grid",gap:5}}>
-                            {unclassified.map(d => (
-                              <div key={d.id} style={{display:"flex",gap:8,alignItems:"center",padding:"6px 10px",background:"white",borderRadius:6,border:"0.5px solid #dbeafe"}}>
-                                <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelectedDoc(d);setPage("detail");}}>
-                                  <div style={{fontSize:12,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</div>
-                                  {d.archiveRef && <div style={{fontSize:10,color:"#8B5CF6",fontFamily:"monospace"}}>{d.archiveRef}</div>}
-                                </div>
-                                <button onClick={e=>{e.stopPropagation();openFootnoteModal(d);}} title="توليد هامش" style={{padding:"3px 8px",borderRadius:5,background:"#faf5ff",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>📝</button>
-                                <button onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}} title="حذف" style={{padding:"3px 8px",borderRadius:5,background:"#fee2e2",border:"0.5px solid #fecaca",color:"#dc2626",cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>🗑️</button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
-
                 </div>
               );
-            });
-            })()}
+            })}
           </div>
         )}
 
@@ -2956,8 +1758,8 @@ ${docsContext}
                   <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
                     {chapters.map(ch => {
                       const pct  = calcChapterProgress(ch.id);
-                      const cnt  = combinedDocs.filter(d => d.chapterId === ch.id).length;
-                      const bibs = bibliography.filter(b => combinedDocs.find(d => d.id === b.docId && d.chapterId === ch.id)).length;
+                      const cnt  = docs.filter(d => d.chapterId === ch.id).length;
+                      const bibs = bibliography.filter(b => docs.find(d => d.id === b.docId && d.chapterId === ch.id)).length;
                       return (
                         <div key={ch.id} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${ch.color}20`}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
@@ -2977,60 +1779,6 @@ ${docsContext}
                   </div>
                   <div style={{marginTop:10,fontSize:10,color:"#94a3b8",textAlign:"center"}}>
                     * تُحسب النسبة بناءً على عدد الوثائق المؤرشفة (60٪) والهوامش المُستخرجة (40٪) لكل فصل
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* ===== تصنيف المصادر الأكاديمية مع نسب الإنجاز لكل فئة ===== */}
-            {(() => {
-              const CATEGORIES = [
-                { keys: ["كتاب","كتاب عربي","كتاب أجنبي"], label: "📚 الكتب",                color: "#3B82F6", target: 40 },
-                { keys: ["رسالة ماجستير","رسالة علمية"],   label: "🎓 رسائل الماجستير",       color: "#8B5CF6", target: 15 },
-                { keys: ["أطروحة دكتوراه"],                 label: "🎓 أطاريح الدكتوراه",      color: "#7C3AED", target: 10 },
-                { keys: ["بحث","بحث علمي"],                 label: "🔬 البحوث",                color: "#0EA5E9", target: 20 },
-                { keys: ["مقالة","مجلة علمية"],             label: "📰 المجلات العلمية",       color: "#F59E0B", target: 20 },
-                { keys: ["مؤتمر علمي","مؤتمر"],             label: "🏛️ المؤتمرات",            color: "#06B6D4", target: 10 },
-                { keys: ["صحيفة"],                          label: "🗞️ الصحف",                color: "#EF4444", target: 10 },
-                { keys: ["وثيقة أرشيفية","مصدر أولي"],     label: "🗂️ الوثائق والمصادر الأولية", color: "#10B981", target: 25 },
-                { keys: ["تقرير","تقرير رسمي"],             label: "📑 التقارير الرسمية",      color: "#64748b", target: 10 },
-                { keys: ["موقع إلكتروني"],                  label: "🌐 المواقع الإلكترونية",   color: "#0EA5E9", target: 10 },
-                { keys: ["موسوعة"],                         label: "📖 الموسوعات",             color: "#14B8A6", target: 5  },
-              ].map(c => ({ ...c, key: c.keys[0] }));
-
-              const allSources = [...docs, ...library];
-              const totalSources = allSources.length || 1;
-              return (
-                <div style={{background:"white",borderRadius:14,padding:"18px 20px",border:"0.5px solid #e2e8f0",marginBottom:16,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div style={{fontWeight:700,fontSize:14,color:"#1e3a5f"}}>🏷️ تصنيف المصادر الأكاديمية حسب النوع</div>
-                    <span style={{fontSize:11,color:"#64748b"}}>المجموع: {allSources.length} مصدر</span>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-                    {CATEGORIES.map(c => {
-                      const count = allSources.filter(s => c.keys.includes(s.sourceType || s.category)).length;
-                      const pct = Math.min(100, Math.round((count / c.target) * 100));
-                      const bibs = bibliography.filter(b => c.keys.includes(b.category)).length;
-
-                      return (
-                        <div key={c.key} style={{background:"#f8fafc",borderRadius:9,padding:"10px 12px",border:`0.5px solid ${c.color}22`}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                            <span style={{fontSize:11,fontWeight:600,color:c.color}}>{c.label}</span>
-                            <span style={{fontSize:12,fontWeight:700,color:pct >= 100 ? "#10B981" : c.color}}>{pct}%</span>
-                          </div>
-                          <div style={{height:6,background:"#e2e8f0",borderRadius:3,overflow:"hidden",marginBottom:5}}>
-                            <div style={{height:"100%",width:`${pct}%`,background:c.color,borderRadius:3,transition:"width 0.6s ease"}}/>
-                          </div>
-                          <div style={{display:"flex",gap:10,fontSize:10,color:"#94a3b8"}}>
-                            <span>📄 {count} / {c.target}</span>
-                            <span>📝 {bibs} هامش</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{marginTop:10,fontSize:10,color:"#94a3b8",textAlign:"center"}}>
-                    * النسبة محسوبة على هدف تقديري لكل فئة — يكتشف الذكاء الاصطناعي النوع تلقائياً عند رفع كل ملف
                   </div>
                 </div>
               );
@@ -3059,7 +1807,7 @@ ${docsContext}
                 <div style={{fontWeight:600,fontSize:13,marginBottom:14,color:"#1e293b"}}>📊 تنوع الأوزان العلمية لكل فصل</div>
                 {chapters.map(ch => {
                   const diversity = calcDiversityForChapter(ch.id);
-                  const total     = combinedDocs.filter(d => d.chapterId === ch.id).length;
+                  const total     = docs.filter(d => d.chapterId === ch.id).length;
                   return (
                     <div key={ch.id} style={{marginBottom:14}}>
                       <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
@@ -3160,7 +1908,7 @@ ${docsContext}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
                       {mainSections.map(sec => {
                         const secDiversity = calcDiversityForSection(sec.id);
-                        const secDocs      = combinedDocs.filter(d => d.sectionId === sec.id || d.sectionId?.startsWith(sec.id));
+                        const secDocs      = docs.filter(d => d.sectionId === sec.id || d.sectionId?.startsWith(sec.id));
                         if (secDocs.length === 0) return null;
                         return (
                           <div key={sec.id} style={{background:"#f8fafc",borderRadius:8,padding:"9px 11px",border:`0.5px solid ${ch.color}15`}}>
@@ -3218,12 +1966,12 @@ ${docsContext}
               {filtered.map(d=>{
                 const ch = CHAPTERS_DATA.find(c=>c.id===d.chapterId);
                 return (
-                  <div key={d.id} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                  <div key={d.id} onClick={()=>{setSelectedDoc(d);setPage("detail");}} style={{padding:"11px 16px",borderBottom:"0.5px solid #f1f5f9",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start",transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="white"}>
                     <div style={{display:"flex",flexDirection:"column",gap:3,flexShrink:0,width:36,alignItems:"center"}}>
                       <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:5,padding:"1px 5px",fontSize:10,fontWeight:700}}>{d.priority}</span>
                       {d.isNew && <span style={{background:"#f0fdf4",color:"#16a34a",borderRadius:5,padding:"1px 5px",fontSize:9}}>جديد</span>}
                     </div>
-                    <div style={{flex:1,minWidth:0,cursor:"pointer"}} onClick={()=>{setSelectedDoc(d);setPage("detail");}}>
+                    <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:500,fontSize:13,marginBottom:2}}>{d.title}</div>
                       <div style={{display:"flex",gap:8,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
                         {d.archiveRef && <span style={{color:"#8B5CF6",fontFamily:"monospace"}}>{d.archiveRef}</span>}
@@ -3232,7 +1980,6 @@ ${docsContext}
                       </div>
                       {d.notes && <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{d.notes}</div>}
                     </div>
-                    <button onClick={e=>{e.stopPropagation();askDeleteSource(d.id);}} title="حذف" style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:12,fontFamily:"inherit",flexShrink:0,alignSelf:"flex-start"}}>🗑️</button>
                   </div>
                 );
               })}
@@ -3325,61 +2072,31 @@ ${docsContext}
         )}
 
         {/* ===== ADD ===== */}
-        {page==="add" && (() => {
-          const SOURCE_TYPES_ADD = ["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي"];
-          // map each source type to ordered list of dynamic fields
-          const FIELDS_BY_TYPE = {
-            "وثيقة أرشيفية": [{k:"archiveRef",l:"الرقم الأرشيفي (IOR)",ph:"IOR/R/15/2/..."},{k:"author",l:"المؤلف / الجهة",ph:"اسم المؤلف"},{k:"year",l:"السنة",ph:"1942",t:"number"}],
-            "كتاب عربي":     [{k:"author",l:"المؤلف",ph:"اسم المؤلف"},{k:"edition",l:"الطبعة",ph:"الأولى"},{k:"place",l:"مكان النشر",ph:"بيروت"},{k:"publisher",l:"الناشر",ph:"دار النشر"},{k:"year",l:"السنة",ph:"1990",t:"number"}],
-            "كتاب أجنبي":    [{k:"author",l:"المؤلف",ph:"Author Name"},{k:"edition",l:"الطبعة",ph:"1st"},{k:"place",l:"مكان النشر",ph:"London"},{k:"publisher",l:"الناشر",ph:"Routledge"},{k:"year",l:"السنة",ph:"1990",t:"number"}],
-            "رسالة ماجستير":  [{k:"author",l:"اسم الباحث",ph:""},{k:"college",l:"الكلية",ph:""},{k:"university",l:"الجامعة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
-            "أطروحة دكتوراه": [{k:"author",l:"اسم الباحث",ph:""},{k:"college",l:"الكلية",ph:""},{k:"university",l:"الجامعة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
-            "بحث علمي":       [{k:"author",l:"المؤلف",ph:""},{k:"journal",l:"اسم المجلة",ph:""},{k:"volume",l:"المجلد",ph:""},{k:"issue",l:"العدد",ph:""},{k:"year",l:"السنة",ph:"",t:"number"},{k:"pages",l:"الصفحات",ph:"45-67"}],
-            "مجلة علمية":     [{k:"author",l:"المؤلف",ph:""},{k:"journal",l:"اسم المجلة",ph:""},{k:"volume",l:"المجلد",ph:""},{k:"issue",l:"العدد",ph:""},{k:"year",l:"السنة",ph:"",t:"number"},{k:"pages",l:"الصفحات",ph:"45-67"}],
-            "مؤتمر علمي":     [{k:"author",l:"المؤلف",ph:""},{k:"conference",l:"اسم المؤتمر",ph:""},{k:"place",l:"المكان",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
-            "صحيفة":          [{k:"newspaper",l:"اسم الصحيفة",ph:""},{k:"issue",l:"رقم العدد",ph:""},{k:"visitDate",l:"التاريخ",ph:"1942-05-10"}],
-            "موقع إلكتروني":  [{k:"author",l:"المؤلف",ph:""},{k:"url",l:"الرابط",ph:"https://..."},{k:"visitDate",l:"تاريخ الزيارة",ph:"2025-01-15"}],
-            "موسوعة":         [{k:"volume",l:"المجلد",ph:""},{k:"edition",l:"الطبعة",ph:""},{k:"publisher",l:"الناشر",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
-            "تقرير رسمي":     [{k:"author",l:"المؤلف",ph:""},{k:"agency",l:"الجهة المصدرة",ph:""},{k:"year",l:"السنة",ph:"",t:"number"}],
-          };
-          const dynFields = FIELDS_BY_TYPE[addForm.category] || FIELDS_BY_TYPE["وثيقة أرشيفية"];
-          return (
+        {page==="add" && (
           <div>
-            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>➕ إضافة مصدر</h1>
-            <p style={{color:"#64748b",fontSize:12,marginBottom:16}}>اختر نوع المصدر أولاً — ستظهر الحقول المناسبة تلقائياً</p>
+            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>➕ إضافة وثيقة</h1>
+            <p style={{color:"#64748b",fontSize:12,marginBottom:16}}>أضف وثيقة يدوياً أو أكمل البيانات المستخرجة من رابط</p>
             <div style={{background:"white",borderRadius:12,padding:20,border:"0.5px solid #e2e8f0"}}>
-              {/* ====== SOURCE TYPE FIRST ====== */}
-              <div style={{background:"#eff6ff",borderRadius:10,padding:12,marginBottom:16,border:"0.5px solid #bfdbfe"}}>
-                <label style={{fontSize:12,color:"#1e40af",fontWeight:700,display:"block",marginBottom:6}}>🏷️ نوع المصدر *</label>
-                <select value={addForm.category} onChange={e=>setAddForm(p=>({...p,category:e.target.value}))} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"0.5px solid #93c5fd",fontSize:14,fontFamily:"inherit",fontWeight:600,background:"white"}}>
-                  {SOURCE_TYPES_ADD.map(t=><option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>العنوان *</label>
-                  <input value={addForm.title} onChange={e=>setAddForm(p=>({...p,title:e.target.value}))} placeholder="عنوان المصدر" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                  <input value={addForm.title} onChange={e=>setAddForm(p=>({...p,title:e.target.value}))} placeholder="عنوان الوثيقة" style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
                 </div>
-
-                {/* ====== DYNAMIC FIELDS PER TYPE ====== */}
-                {dynFields.map(f=>(
-                  <div key={f.k}>
-                    <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>{f.l}</label>
-                    <input type={f.t||"text"} value={addForm[f.k]||""} onChange={e=>setAddForm(p=>({...p,[f.k]:e.target.value}))} placeholder={f.ph} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                {[
+                  {key:"archiveRef",label:"الرقم الأرشيفي (IOR)",ph:"IOR/R/15/2/..."},
+                  {key:"author",label:"المؤلف / الجهة",ph:"اسم المؤلف"},
+                  {key:"year",label:"السنة",ph:"1942",type:"number"},
+                  {key:"keywords",label:"الكلمات المفتاحية",ph:"بريطانيا، نفط، استراتيجية"},
+                ].map(f=>(
+                  <div key={f.key}>
+                    <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>{f.label}</label>
+                    <input type={f.type||"text"} value={addForm[f.key]} onChange={e=>setAddForm(p=>({...p,[f.key]:e.target.value}))} placeholder={f.ph} style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
                   </div>
                 ))}
-
-                {/* keywords always */}
-                <div>
-                  <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>الكلمات المفتاحية</label>
-                  <input value={addForm.keywords} onChange={e=>setAddForm(p=>({...p,keywords:e.target.value}))} placeholder="بريطانيا، نفط، استراتيجية" style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                </div>
-
-                {/* chapter / priority / country common */}
                 {[
                   {key:"chapterId",label:"الفصل",opts:[{v:"",l:"اختر فصلاً"},...CHAPTERS_DATA.map(c=>({v:c.id,l:c.titleAr.split(":")[0]}))]},
                   {key:"priority",label:"الأولوية",opts:[{v:"★★★",l:"★★★ اقرأه كاملاً"},{v:"★★",l:"★★ أوراق محددة"},{v:"★",l:"★ احفظ المرجع"}]},
+                  {key:"category",label:"النوع",opts:CATEGORIES.map(c=>({v:c,l:c}))},
                   {key:"country",label:"الدولة",opts:[{v:"",l:"اختر"},...COUNTRIES.map(c=>({v:c,l:c}))]},
                 ].map(f=>(
                   <div key={f.key}>
@@ -3395,55 +2112,23 @@ ${docsContext}
                 </div>
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={{fontSize:12,color:"#64748b",display:"block",marginBottom:4}}>ملاحظات</label>
-                  <textarea value={addForm.notes} onChange={e=>setAddForm(p=>({...p,notes:e.target.value}))} rows={3} placeholder="أهمية المصدر، المحتوى المتوقع..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                  <textarea value={addForm.notes} onChange={e=>setAddForm(p=>({...p,notes:e.target.value}))} rows={3} placeholder="أهمية الوثيقة، المحتوى المتوقع..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
                 </div>
                 <div>
                   <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13}}>
                     <input type="checkbox" checked={addForm.isNew} onChange={e=>setAddForm(p=>({...p,isNew:e.target.checked}))}/>
-                    مصدر جديد (مُكتشف مؤخراً)
+                    وثيقة جديدة (مُكتشفة مؤخراً)
                   </label>
                 </div>
               </div>
-              <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
-                <button onClick={handleAddDoc} style={{padding:"9px 22px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>إضافة المصدر</button>
-                {(addForm.category==="كتاب عربي" || addForm.category==="كتاب أجنبي") && (
-                  <button onClick={extractBookMetadata} disabled={bookExtractLoading} style={{padding:"9px 16px",borderRadius:8,background:"#fef3c7",color:"#92400e",border:"0.5px solid #fde68a",cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:600}}>
-                    {bookExtractLoading ? "⏳ جاري الاستخراج..." : "🪄 استخراج تلقائي لبيانات الكتاب"}
-                  </button>
-                )}
-                <button onClick={()=>setAddForm(EMPTY_ADD_FORM)} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>مسح</button>
+              <div style={{display:"flex",gap:10,marginTop:16}}>
+                <button onClick={handleAddDoc} style={{padding:"9px 22px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>إضافة الوثيقة</button>
+                <button onClick={()=>setAddForm({title:"",author:"",year:"",archiveRef:"",chapterId:"",section:"",priority:"★★",category:"مصدر أولي",country:"",keywords:"",notes:"",isNew:false,status:"لم يُراجع"})} style={{padding:"9px 16px",borderRadius:8,background:"transparent",border:"0.5px solid #cbd5e1",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>مسح</button>
                 <button onClick={()=>{setUrlImport(""); setPage("url_import");}} style={{padding:"9px 16px",borderRadius:8,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>🔗 استيراد من رابط</button>
               </div>
             </div>
-
-
-          {/* ===== Added Sources List with Delete ===== */}
-          {(() => {
-            const userAdded = docs.filter(d => !BASE_DOC_IDS.has(d.id));
-            if (userAdded.length === 0) return null;
-            return (
-              <div style={{background:"white",borderRadius:12,padding:20,border:"0.5px solid #e2e8f0",marginTop:16}}>
-                <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:12}}>📋 المصادر المُضافة ({userAdded.length})</div>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {userAdded.map(d => (
-                    <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:8,border:"0.5px solid #e2e8f0",background:"#f8fafc"}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontWeight:600,fontSize:13,color:"#1e293b",marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</div>
-                        <div style={{fontSize:11,color:"#64748b"}}>
-                          <span style={{background:"#e0f2fe",color:"#0369a1",padding:"1px 6px",borderRadius:4,marginInlineEnd:6}}>{d.category || d.sourceType || "مصدر"}</span>
-                          {d.author && <span>{d.author}</span>}{d.year && <span> • {d.year}</span>}
-                        </div>
-                      </div>
-                      <button onClick={()=>setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",onConfirm:()=>deleteUserDoc(d.id)})} title="حذف" style={{padding:"6px 10px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>🗑️</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
           </div>
-          );
-        })()}
+        )}
 
         {/* ===== EXPORT ===== */}
         {page==="export" && (
@@ -3534,62 +2219,22 @@ ${docsContext}
                   </div>
                 )}
 
-                {(() => {
-                  const _q = exportSearch.trim().toLowerCase();
-                  const _filteredExportDocs = combinedDocs.filter(d => {
-                    if (exportTypeFilter && (d.category||"وثيقة أرشيفية") !== exportTypeFilter) return false;
-                    if (!_q) return true;
-                    return [d.title, d.author, d.archiveRef].some(v => (v||"").toString().toLowerCase().includes(_q));
-                  });
-                  return (
-                    <>
-                      <div style={{marginBottom:10}}>
-                        <label style={{display:"block",fontSize:12,fontWeight:600,marginBottom:4,color:"#475569"}}>ابحث في المصادر...</label>
-                        <input
-                          type="text"
-                          value={exportSearch}
-                          onChange={e=>setExportSearch(e.target.value)}
-                          placeholder="ابحث بالعنوان أو المؤلف أو الرقم الأرشيفي"
-                          style={{width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:12,fontFamily:"inherit",boxSizing:"border-box",direction:"rtl"}}
-                        />
-                      </div>
-                      <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
-                        <button onClick={()=>setExportSelected(_filteredExportDocs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل</button>
-                        <button onClick={()=>setExportSelected(_filteredExportDocs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط</button>
-                        <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
-                        <select value={exportTypeFilter} onChange={e=>setExportTypeFilter(e.target.value)} style={{marginInlineStart:"auto",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                          <option value="">🏷️ كل الأنواع</option>
-                          {["وثيقة أرشيفية","كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </div>
-                      <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
-                        {_filteredExportDocs.length === 0
-                          ? <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>لا توجد نتائج مطابقة</div>
-                          : _filteredExportDocs.map(d=>(
-                          <div key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",fontSize:11}}>
-                            <label style={{display:"flex",alignItems:"center",gap:8,flex:1,cursor:"pointer",minWidth:0}}>
-                              <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
-                              <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
-                              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
-                              <span style={{fontSize:9,color:"white",background:"#3B82F6",borderRadius:4,padding:"2px 6px",flexShrink:0,fontWeight:600}}>{d.category||"وثيقة أرشيفية"}</span>
-                            </label>
-                            <button
-                              onClick={(e)=>{e.stopPropagation();openFootnoteModal(d);}}
-                              title="توليد مرجع وإضافته للمراجع النهائية"
-                              style={{padding:"4px 10px",borderRadius:6,background:"#eff6ff",color:"#3B82F6",border:"0.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit",fontSize:10,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>
-                              📝 توليد مرجع
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  );
-                })()}
-                <button onClick={()=>{
-                  if (!exportSelected.length) { showNotif("اختر وثيقة واحدة على الأقل","error"); return; }
-                  const items = combinedDocs.filter(d=>exportSelected.includes(d.id)).map(d=>({doc:d, page:""}));
-                  setBulkFootnoteModal({ items, generated: null });
-                }} style={{marginTop:12,width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>توليد {exportSelected.length} مرجع</button>
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <button onClick={()=>setExportSelected(docs.map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>تحديد الكل ({docs.length})</button>
+                  <button onClick={()=>setExportSelected(docs.filter(d=>d.priority==="★★★").map(d=>d.id))} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>★★★ فقط ({stats.highP})</button>
+                  <button onClick={()=>setExportSelected([])} style={{padding:"5px 10px",borderRadius:6,border:"0.5px solid #cbd5e1",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>مسح</button>
+                </div>
+                <div style={{maxHeight:300,overflowY:"auto",borderRadius:8,border:"0.5px solid #f1f5f9"}}>
+                  {docs.map(d=>(
+                    <label key={d.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"0.5px solid #f8fafc",cursor:"pointer",fontSize:11}}>
+                      <input type="checkbox" checked={exportSelected.includes(d.id)} onChange={()=>setExportSelected(p=>p.includes(d.id)?p.filter(x=>x!==d.id):[...p,d.id])}/>
+                      <span style={{background:pBg(d.priority),color:pColor(d.priority),borderRadius:4,padding:"1px 4px",fontSize:9,flexShrink:0}}>{d.priority}</span>
+                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.title}</span>
+                      <span style={{fontSize:9,color:"#94a3b8",flexShrink:0}}>{d.category||"وثيقة"}</span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={handleExport} style={{marginTop:12,width:"100%",padding:"9px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>توليد {exportSelected.length} مرجع</button>
               </div>
               <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>المراجع المُولَّدة</div>
@@ -3633,45 +2278,8 @@ ${docsContext}
                 <button onClick={()=>{navigator.clipboard.writeText(aiResult);showNotif("✅ تم النسخ!");}} style={{marginTop:12,padding:"7px 14px",borderRadius:8,background:"white",border:"0.5px solid #d8b4fe",color:"#7C3AED",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ التحليل</button>
               </div>
             )}
-
-            {/* ===== المعرّف الأكاديمي للكيانات ===== */}
-            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginTop:18}}>
-              <div style={{fontWeight:700,color:"#0f172a",marginBottom:6,fontSize:14}}>🔎 المعرّف الأكاديمي (شخص / مكان / جهة)</div>
-              <p style={{color:"#64748b",fontSize:12,marginBottom:10}}>أدخل اسم شخصية أو مكان أو جهة — سيعطيك المساعد تعريفاً مكثّفاً في ثلاثة أسطر مع مصدر موثوق قابل للتحقق.</p>
-              <div style={{display:"flex",gap:10,marginBottom:10}}>
-                <input value={entityQuery} onChange={e=>setEntityQuery(e.target.value)} placeholder="مثال: السير تشارلز بلجريف، ميناء البحرين، شركة نفط العراق (IPC)…" style={{flex:1,padding:"9px 14px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter")handleEntityLookup();}}/>
-                <button onClick={handleEntityLookup} disabled={entityLoading} style={{padding:"9px 18px",borderRadius:8,background:"#0f172a",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
-                  {entityLoading?"⏳":"تعريف →"}
-                </button>
-              </div>
-              {entityLoading && <div style={{color:"#64748b",fontSize:12}}>جاري البحث عن تعريف موثوق…</div>}
-              {entityResult && !entityLoading && (
-                <div style={{background:"#f8fafc",borderRadius:8,padding:14,border:"0.5px solid #e2e8f0"}}>
-                  <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{entityResult.name || entityQuery}</div>
-                  <div style={{whiteSpace:"pre-wrap",fontSize:13,lineHeight:1.9,color:"#1e293b",marginBottom:10}}>{entityResult.definition || "—"}</div>
-                  {entityResult.source && entityResult.source.title && entityResult.source.author ? (
-                    <div style={{fontSize:12,color:"#475569",borderTop:"0.5px solid #e2e8f0",paddingTop:8}}>
-                      <strong>المصدر الأكاديمي{entityResult.sourceType ? ` (${entityResult.sourceType==="book"?"كتاب":entityResult.sourceType==="journal"?"مجلة محكّمة":"رسالة جامعية"})` : ""}:</strong>{" "}
-                      {entityResult.source.author} — <em>{entityResult.source.title}</em>
-                      {entityResult.source.publisher ? `, ${entityResult.source.publisher}` : ""}
-                      {entityResult.source.year ? ` (${entityResult.source.year})` : ""}
-                      {entityResult.source.url ? <>{" — "}<a href={entityResult.source.url} target="_blank" rel="noopener noreferrer" style={{color:"#2563eb"}}>{entityResult.source.url}</a></> : null}
-                    </div>
-                  ) : (
-                    <div style={{fontSize:12,color:"#b45309",background:"#fef3c7",borderRadius:6,padding:"8px 10px",borderTop:"0.5px solid #fde68a"}}>
-                      ⚠️ No credible academic source available for this entity — لا يوجد مصدر أكاديمي موثّق (كتاب/مجلة محكّمة/رسالة جامعية) قابل للتحقق لهذا الكيان.
-                    </div>
-                  )}
-                  <button onClick={()=>{
-                    const txt = `${entityResult.name||entityQuery}\n${entityResult.definition||""}\nالمصدر: ${entityResult.source?.title||""} ${entityResult.source?.url||""}`.trim();
-                    navigator.clipboard.writeText(txt); showNotif("✅ تم النسخ!");
-                  }} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"white",border:"0.5px solid #cbd5e1",color:"#0f172a",cursor:"pointer",fontFamily:"inherit",fontSize:12}}>📋 نسخ</button>
-                </div>
-              )}
-            </div>
           </div>
         )}
-
 
         {/* ===== LIBRARY ===== */}
         {page==="library" && (
@@ -3682,7 +2290,7 @@ ${docsContext}
                 <p style={{color:"#64748b",fontSize:12}}>ارفع مصادرك (PDF، MD، TXT) أو أضف رابطاً — سيحللها الذكاء الاصطناعي ويصنفها لفصول أطروحتك تلقائياً</p>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <input ref={libFileRef} type="file" accept=".pdf,.docx,.md,.txt,.jpg,.jpeg,.png,.webp,.tif,.tiff,.bmp,.gif,image/*" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
+                <input ref={libFileRef} type="file" accept=".pdf,.md,.txt" multiple style={{display:"none"}} onChange={e=>handleLibFileUpload(e.target.files)}/>
                 <button onClick={()=>libFileRef.current?.click()} disabled={libUploading} style={{padding:"9px 18px",borderRadius:8,background:"#3B82F6",color:"white",border:"none",cursor:"pointer",fontWeight:600,fontFamily:"inherit",fontSize:13}}>
                   {libUploading?"⏳ جاري الرفع...":"📁 رفع ملفات"}
                 </button>
@@ -3693,7 +2301,7 @@ ${docsContext}
             <div style={{background:"white",borderRadius:12,padding:16,border:"2px dashed #bfdbfe",marginBottom:14,textAlign:"center",cursor:"pointer"}} onClick={()=>libFileRef.current?.click()} onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#3B82F6"}} onDragLeave={e=>e.currentTarget.style.borderColor="#bfdbfe"} onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="#bfdbfe";handleLibFileUpload(e.dataTransfer.files);}}>
               <div style={{fontSize:36,marginBottom:6}}>📂</div>
               <div style={{fontWeight:600,color:"#3B82F6",marginBottom:4}}>اسحب وأسقط ملفاتك هنا أو اضغط للاختيار</div>
-              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF (مع OCR) • DOCX • MD • TXT • صور ممسوحة (JPG/PNG/TIFF/WebP…) — يمر الكل بنفس الخط: رفع ← OCR ← تحليل ← تصنيف ← ربط بالأطروحة — حجم أقصى 500MB للملف الواحد • حتى 20 ملف دفعة واحدة</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>يدعم: PDF • Markdown (MD) • نص عادي (TXT) — حجم أقصى 10MB للملف الواحد</div>
               <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>يمكن رفع عدة ملفات دفعة واحدة — كتب، رسائل، بحوث، مقالات، صحف، وثائق...</div>
             </div>
 
@@ -3736,7 +2344,7 @@ ${docsContext}
                 </select>
                 <select value={libFilter.category} onChange={e=>setLibFilter(p=>({...p,category:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأنواع</option>
-                  {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                  {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <select value={libFilter.priority} onChange={e=>setLibFilter(p=>({...p,priority:e.target.value}))} style={{padding:"7px 8px",borderRadius:7,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
                   <option value="">كل الأولويات</option>
@@ -3783,7 +2391,7 @@ ${docsContext}
                           </div>
                         </div>
                         <div style={{display:"flex",gap:4,flexShrink:0}}>
-                          <button onClick={e=>{e.stopPropagation();setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المصدر؟\nلا يمكن التراجع عن هذا الإجراء.",onConfirm:()=>deleteLibSrc(src.id)});}} title="حذف" style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>🗑️</button>
+                          <button onClick={e=>{e.stopPropagation();deleteLibSrc(src.id);}} style={{padding:"4px 8px",borderRadius:6,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>🗑️</button>
                         </div>
                       </div>
 
@@ -3798,18 +2406,6 @@ ${docsContext}
                           )}
                           {!isAnalyzing && (
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                              {/* ملخص */}
-                              {/* تصنيف الذكاء الاصطناعي داخل هيكل الأطروحة */}
-                              {(src.sectionName || src.subSectionName || src.classificationReason) && (
-                                <div style={{gridColumn:"1/-1",background:"#ecfeff",borderRadius:8,padding:12,border:"0.5px solid #a5f3fc"}}>
-                                  <div style={{fontSize:11,fontWeight:600,color:"#0e7490",marginBottom:6}}>🎯 تصنيف الذكاء الاصطناعي</div>
-                                  {src.chapterName && <div style={{fontSize:12,marginBottom:3}}><b>الفصل:</b> {src.chapterName}</div>}
-                                  {src.sectionName && <div style={{fontSize:12,marginBottom:3}}><b>المبحث:</b> {src.sectionName}</div>}
-                                  {src.subSectionName && <div style={{fontSize:12,marginBottom:3}}><b>الفقرة:</b> {src.subSectionName}</div>}
-                                  {src.classificationReason && <div style={{fontSize:11,color:"#475569",marginTop:5}}><b>السبب:</b> {src.classificationReason}</div>}
-                                  {src.classificationConfidence && <div style={{fontSize:10,color:"#0e7490",marginTop:3}}>مستوى الثقة: {src.classificationConfidence}</div>}
-                                </div>
-                              )}
                               {/* ملخص */}
                               {src.summary && (
                                 <div style={{gridColumn:"1/-1",background:"#eff6ff",borderRadius:8,padding:12,border:"0.5px solid #bfdbfe"}}>
@@ -3880,7 +2476,7 @@ ${docsContext}
                                   <div>
                                     <label style={{fontSize:10,color:"#94a3b8",display:"block",marginBottom:3}}>نوع المصدر</label>
                                     <select value={src.sourceType||""} onChange={e=>updateLibSrc(src.id,{sourceType:e.target.value})} style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"0.5px solid #cbd5e1",fontSize:11,fontFamily:"inherit"}}>
-                                      {["كتاب عربي","كتاب أجنبي","رسالة ماجستير","أطروحة دكتوراه","بحث علمي","مجلة علمية","مؤتمر علمي","صحيفة","موقع إلكتروني","موسوعة","وثيقة أرشيفية","تقرير رسمي","مصدر أولي"].map(t=><option key={t} value={t}>{t}</option>)}
+                                      {["كتاب","رسالة علمية","بحث","مقالة","صحيفة","وثيقة أرشيفية","تقرير","أطروحة دكتوراه","موقع إلكتروني"].map(t=><option key={t} value={t}>{t}</option>)}
                                     </select>
                                   </div>
                                   <div style={{gridColumn:"1/-1"}}>
@@ -4238,15 +2834,15 @@ ${docsContext}
                     <input
                       ref={translatorFileRef}
                       type="file"
-                      accept=".txt,.md,.pdf,.jpg,.jpeg,.png,.webp"
+                      accept=".txt,.md"
                       style={{display:"none"}}
                       onChange={e=>handleTranslatorFileUpload(e.target.files[0])}
                     />
                     <div style={{fontSize:28,marginBottom:6}}>📄</div>
                     <div style={{fontSize:12,fontWeight:500,color:"#3B82F6",marginBottom:3}}>
-                      {translatorFileName ? `✅ ${translatorFileName}` : "اسحب ملف TXT / MD / PDF / صورة هنا أو اضغط للاختيار"}
+                      {translatorFileName ? `✅ ${translatorFileName}` : "اسحب ملف TXT أو MD هنا أو اضغط للاختيار"}
                     </div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>PDF نصي يُستخرج تلقائياً • PDF ممسوح + صور (JPG/PNG/WEBP) عبر OCR بالذكاء الاصطناعي</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>للـ PDF: افتحه وانسخ النص وألصقه في الحقل أدناه</div>
                   </div>
 
                   {/* لغة الوثيقة */}
@@ -4460,7 +3056,7 @@ ${docsContext}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
                   {chapters.map(ch => {
-                    const chDocs     = combinedDocs.filter(d => d.chapterId === ch.id);
+                    const chDocs     = docs.filter(d => d.chapterId === ch.id);
                     const diversity  = calcDiversityForChapter(ch.id);
                     const progress   = calcChapterProgress(ch.id);
                     return (
@@ -4697,7 +3293,7 @@ ${docsContext}
                                 📋
                               </button>
                               <button
-                                onClick={()=>setConfirmDialog({title:"تأكيد الحذف",message:"هل أنت متأكد من حذف هذا المرجع من القائمة النهائية؟",onConfirm:()=>removeFromBibliography(b.id)})}
+                                onClick={()=>removeFromBibliography(b.id)}
                                 title="حذف"
                                 style={{padding:"4px 8px",borderRadius:5,background:"#fee2e2",color:"#dc2626",border:"none",cursor:"pointer",fontSize:11}}>
                                 🗑️
@@ -5062,15 +3658,106 @@ ${docsContext}
           </div>
         )}
 
-        {/* ===== SUPERVISOR ROOM ===== */}
-        {page==="supervisor" && (
-          <SupervisorRoom
-            chapters={chapters}
-            combinedDocs={combinedDocs}
-            bibliography={bibliography}
-            showNotif={showNotif}
-            setConfirmDialog={setConfirmDialog}
-          />
+        {/* ===== TELEGRAM ===== */}
+        {page==="telegram" && (
+          <div>
+            <h1 style={{fontSize:20,fontWeight:700,marginBottom:6}}>✈️ محرك البحث — تيليغرام والمصادر الرقمية</h1>
+            <p style={{color:"#64748b",fontSize:13,marginBottom:4}}>ابحث عن مصادر أطروحتك في قنوات تيليغرام الأرشيفية والتاريخية</p>
+            <div style={{background:"#fef9c3",borderRadius:8,padding:12,marginBottom:16,border:"0.5px solid #fde68a",fontSize:12,color:"#78350f"}}>
+              ⚠️ <strong>ملاحظة:</strong> تيليغرام لا يوفر API بحث عام مجاني. هذا المحرك يستخدم الذكاء الاصطناعي لاقتراح القنوات والمصادر ذات الصلة، ثم تنتقل إليها يدوياً.
+            </div>
+            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginBottom:14}}>
+              <div style={{display:"flex",gap:10,marginBottom:12}}>
+                <input value={tgQuery} onChange={e=>setTgQuery(e.target.value)} placeholder="مثال: وثائق IOR الخليج العربي، أرشيف بريطاني، RAF البحرين..." style={{flex:1,padding:"9px 14px",borderRadius:8,border:"0.5px solid #cbd5e1",fontSize:13,fontFamily:"inherit"}} onKeyDown={e=>{if(e.key==="Enter")handleTgSearch();}}/>
+                <button onClick={handleTgSearch} disabled={tgLoading} style={{padding:"9px 18px",borderRadius:8,background:"#0088cc",color:"white",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:13}}>
+                  {tgLoading?"⏳ بحث...":"🔍 بحث"}
+                </button>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {["وثائق تاريخية خليج عربي","IOR أرشيف بريطاني","RAF البحرين الحرب العالمية","نفط الكويت 1940","تاريخ الخليج العثماني"].map(q=>(
+                  <button key={q} onClick={()=>setTgQuery(q)} style={{padding:"4px 10px",borderRadius:20,border:"0.5px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{q}</button>
+                ))}
+              </div>
+            </div>
+
+            {tgLoading && <div style={{background:"white",borderRadius:12,padding:30,textAlign:"center",border:"0.5px solid #e2e8f0"}}><div style={{fontSize:36}}>🔍</div><div style={{color:"#64748b",marginTop:8}}>جاري البحث والتحليل...</div></div>}
+
+            {tgResults && !tgLoading && !tgResults.error && (
+              <div style={{display:"grid",gap:14}}>
+                {tgResults.channels && tgResults.channels.length>0 && (
+                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
+                    <div style={{fontWeight:600,fontSize:13,marginBottom:12,color:"#0088cc"}}>📢 قنوات ومجموعات تيليغرام مقترحة</div>
+                    {tgResults.channels.map((ch,i)=>(
+                      <div key={i} style={{padding:"10px 0",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <span style={{fontSize:20,flexShrink:0}}>✈️</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:500,fontSize:13}}>{ch.name}</div>
+                          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{ch.description}</div>
+                          {ch.url && <a href={ch.url} target="_blank" rel="noopener noreferrer" style={{fontSize:11,color:"#0088cc",display:"block",marginTop:3}}>{ch.url}</a>}
+                        </div>
+                        {ch.url && <a href={ch.url} target="_blank" rel="noopener noreferrer" style={{padding:"5px 10px",borderRadius:6,background:"#e7f3ff",color:"#0088cc",textDecoration:"none",fontSize:11,flexShrink:0}}>فتح</a>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {tgResults.related_docs && tgResults.related_docs.length>0 && (
+                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
+                    <div style={{fontWeight:600,fontSize:13,marginBottom:12,color:"#8B5CF6"}}>📄 وثائق مقترحة للإضافة</div>
+                    {tgResults.related_docs.map((d,i)=>(
+                      <div key={i} style={{padding:"10px 0",borderBottom:"0.5px solid #f1f5f9",display:"flex",gap:10,alignItems:"flex-start"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:500,fontSize:13}}>{d.title}</div>
+                          {d.archiveRef && <div style={{fontSize:11,color:"#8B5CF6",fontFamily:"monospace",marginTop:2}}>{d.archiveRef}</div>}
+                          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{d.relevance}</div>
+                        </div>
+                        <button onClick={()=>{setAddForm(p=>({...p,title:d.title,archiveRef:d.archiveRef||"",notes:d.relevance||""}));setPage("add");showNotif("تم نقل بيانات الوثيقة للنموذج");}} style={{padding:"5px 10px",borderRadius:6,background:"#f5f3ff",color:"#8B5CF6",border:"none",cursor:"pointer",fontSize:11,fontFamily:"inherit",flexShrink:0}}>إضافة +</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {tgResults.keywords && tgResults.keywords.length>0 && (
+                  <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0"}}>
+                    <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>🔑 كلمات مفتاحية للبحث في تيليغرام</div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {tgResults.keywords.map((k,i)=><span key={i} style={{background:"#f1f5f9",borderRadius:6,padding:"4px 10px",fontSize:12}}>{k}</span>)}
+                    </div>
+                  </div>
+                )}
+                {tgResults.qdl_suggestions && tgResults.qdl_suggestions.length>0 && (
+                  <div style={{background:"#eff6ff",borderRadius:12,padding:16,border:"0.5px solid #bfdbfe"}}>
+                    <div style={{fontWeight:600,fontSize:13,marginBottom:10,color:"#3B82F6"}}>🔗 اقتراحات QDL ذات الصلة</div>
+                    {tgResults.qdl_suggestions.map((s,i)=>(
+                      <div key={i} style={{padding:"6px 0",borderBottom:"0.5px solid #dbeafe",fontSize:13}}>• {s}</div>
+                    ))}
+                    <a href="https://www.qdl.qa/en/search#q=%D8%A7%D9%84%D8%AE%D9%84%D9%8A%D8%AC%20%D8%A7%D9%84%D8%B9%D8%B1%D8%A8%D9%8A&start=0" target="_blank" rel="noopener noreferrer" style={{display:"inline-block",marginTop:10,padding:"7px 14px",borderRadius:8,background:"#3B82F6",color:"white",textDecoration:"none",fontSize:12}}>فتح QDL ←</a>
+                  </div>
+                )}
+              </div>
+            )}
+            {tgResults && tgResults.error && (
+              <div style={{background:"#fee2e2",borderRadius:12,padding:14,border:"0.5px solid #fca5a5",fontSize:13,color:"#dc2626"}}>{tgResults.error}</div>
+            )}
+
+            {/* Telegram Direct Links */}
+            <div style={{background:"white",borderRadius:12,padding:16,border:"0.5px solid #e2e8f0",marginTop:14}}>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>🔗 روابط مباشرة لقنوات أرشيفية موثوقة</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {[
+                  {name:"قناة الوثائق التاريخية العربية","url":"https://t.me/tarikh_waثائق"},
+                  {name:"أرشيف الخليج والجزيرة العربية","url":"https://t.me/gulf_archive"},
+                  {name:"مكتبة التاريخ الإسلامي","url":"https://t.me/islamic_history_lib"},
+                  {name:"Qatar Digital Library (موقع رسمي)","url":"https://www.qdl.qa"},
+                  {name:"British National Archives","url":"https://discovery.nationalarchives.gov.uk"},
+                  {name:"Internet Archive — الوثائق العربية","url":"https://archive.org/search?query=gulf+arabia+1940"},
+                ].map((l,i)=>(
+                  <a key={i} href={l.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:8,background:"#f8fafc",border:"0.5px solid #e2e8f0",textDecoration:"none",color:"#1e293b",fontSize:12}}>
+                    <span style={{fontSize:16}}>{l.url.includes("t.me")?"✈️":"🌐"}</span>
+                    <span>{l.name}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
       </div>
