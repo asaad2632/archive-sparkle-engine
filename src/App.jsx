@@ -1079,7 +1079,9 @@ ${JSON.stringify(thesisStructure, null, 2)}
         uploadDate: new Date().toLocaleDateString("ar-IQ"),
         status: "تم التحليل ✅", analyzed: true, ...parsed
       };
-      saveLibrary([newSrc, ...library]);
+      setLibrary(prev => [newSrc, ...prev]);
+      const { error: insErr } = await insertLibraryRow(newSrc);
+      if (insErr) showNotif("⚠️ فشل حفظ الرابط في السحابة", "error");
       setLibUrlInput("");
       showNotif("✅ تمت إضافة المصدر من الرابط");
     } catch {
@@ -1089,18 +1091,25 @@ ${JSON.stringify(thesisStructure, null, 2)}
   };
 
   const updateLibSrc = (id, changes) => {
-    const updated = library.map(s => s.id === id ? { ...s, ...changes } : s);
-    saveLibrary(updated);
+    setLibrary(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
     if (libSelected?.id === id) setLibSelected({ ...libSelected, ...changes });
+    // Fire-and-forget cloud update.
+    updateLibraryRow(id, changes).then(({ error }) => {
+      if (error) showNotif("⚠️ فشل تحديث المصدر في السحابة", "error");
+    });
   };
 
   const deleteLibSrc = (id) => {
     const target = library.find(s => s.id === id);
     if (target?.storagePath) { deleteLibraryFile(target.storagePath).catch(() => {}); }
-    saveLibrary(library.filter(s => s.id !== id));
+    setLibrary(prev => prev.filter(s => s.id !== id));
     if (libSelected?.id === id) setLibSelected(null);
+    deleteLibraryRow(id).then(({ error }) => {
+      if (error) showNotif("⚠️ فشل حذف المصدر من السحابة", "error");
+    });
     showNotif("🗑️ تم حذف المصدر");
   };
+
 
   // Expose a signed-URL helper for the library UI (PDF/image preview from Storage).
   const openLibStorageFile = async (path) => {
