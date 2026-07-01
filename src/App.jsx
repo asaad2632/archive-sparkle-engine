@@ -963,14 +963,13 @@ ${JSON.stringify(thesisStructure, null, 2)}
   const MAX_LIB_FILES_BATCH = 20; // up to 20 files at once
   const MAX_LIB_TOTAL_SIZE = 1024 * 1024 * 1024; // 1GB total per batch
 
-  // Functional update for library that persists to localStorage too
+  // Functional update for library — updates state only. Cloud persistence
+  // happens through insertLibraryRow / updateLibraryRow which callers invoke
+  // alongside the state update.
   const updateLibrary = (updater) => {
-    setLibrary(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      try { localStorage.setItem("acadarchiv_library", JSON.stringify(next)); } catch {}
-      return next;
-    });
+    setLibrary(prev => (typeof updater === "function" ? updater(prev) : updater));
   };
+
 
   const handleLibFileUpload = async (files) => {
     if (!files?.length) return;
