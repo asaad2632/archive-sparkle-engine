@@ -1040,12 +1040,19 @@ ${JSON.stringify(thesisStructure, null, 2)}
         fileData: storedText, // text only; binary content lives in Storage
       };
       updateLibrary(prev => [newSrc, ...prev]);
+      // Persist to Supabase immediately so the row appears in library_sources
+      // and shows up on other browsers via loadLibrary().
+      const { error: insErr } = await insertLibraryRow(newSrc);
+      if (insErr) showNotif("⚠️ فشل حفظ المصدر في السحابة", "error");
 
       const analysis = await analyzeSource(newSrc, payload);
       const analyzed = analysis && (analysis.title || analysis.summary || analysis.chapterId)
         ? { ...newSrc, ...analysis, analyzed: true, status: "تم التحليل ✅" }
         : { ...newSrc, analyzed: false, status: "فشل التحليل ⚠️ — عدّل يدوياً" };
       updateLibrary(prev => prev.map(s => s.id === srcId ? analyzed : s));
+      // Upsert the analyzed version too so title/summary/keywords are stored.
+      await insertLibraryRow(analyzed);
+
     }
     setLibUploading(false);
     showNotif("✅ اكتمل رفع وتحليل الملفات");
