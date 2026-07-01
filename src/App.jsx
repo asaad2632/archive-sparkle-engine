@@ -770,10 +770,8 @@ export default function App() {
     showNotif("🗑️ تم حذف المرجع من القائمة");
   };
 
-  // ===== مكتبتي البحثية =====
-  const [library, setLibrary] = useState(() => {
-    try { const v = localStorage.getItem("acadarchiv_library"); return v && v !== "undefined" ? JSON.parse(v) : []; } catch { return []; }
-  });
+  // ===== مكتبتي البحثية (Phase 3b — cloud-backed via library_sources) =====
+  const [library, setLibrary] = useState([]);
   const [libUploading, setLibUploading] = useState(false);
   const [libAnalyzing, setLibAnalyzing] = useState(null); // id المصدر الجاري تحليله
   const [libFilter, setLibFilter] = useState({ query:"", chapterId:"", category:"", priority:"" });
@@ -782,16 +780,11 @@ export default function App() {
   const [libUrlLoading, setLibUrlLoading] = useState(false);
   const libFileRef = useRef(null);
 
-  const saveLibrary = (updated) => {
-    setLibrary(updated);
-    try { localStorage.setItem("acadarchiv_library", JSON.stringify(updated)); } catch {}
-  };
+  // Legacy alias — retained so existing callers don't crash. Cloud writes now
+  // happen through insertLibraryRow / updateLibraryRow / deleteLibraryRow.
+  const saveLibrary = (updated) => { setLibrary(updated); };
 
-  // Phase 3b: debounced library sync to cloud
-  React.useEffect(() => {
-    if (!libHydratedRef.current) return;
-    syncLibraryDebounced(library);
-  }, [library, syncLibraryDebounced]);
+
 
 
 
